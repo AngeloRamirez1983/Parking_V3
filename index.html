@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Parking – PWA</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <style>
+    :root{ --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
+    .container{max-width:1200px;margin:0 auto;padding:16px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+    h1{margin:8px 0 0;font-size:22px;display:flex;gap:10px;align-items:center}
+    .brand{width:32px;height:32px}
+    .muted{color:var(--muted)}
+    .card{background:var(--card);border:1px solid #0b1f38;border-radius:16px;padding:16px;box-shadow:0 10px 30px #0007;margin:12px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > *{flex:1 1 220px}
+    input,select,button{padding:12px 14px;border-radius:12px;border:1px solid #234;background:#0b1728;color:#eef2ff}
+    input.upper{text-transform:uppercase}
+    button{cursor:pointer;font-weight:600}
+    .btn{background:#0f2a44}
+    .btn-ok{background:#16803d;border-color:#146c33}
+    .btn-warn{background:#b96a09;border-color:#9a5808}
+    .btn-ghost{background:#0d1526;border-color:#15213a}
+    .btn-back{background:#0d1526;border-color:#15213a}
+    .hidden{display:none !important}
+    pre{white-space:pre-wrap;word-break:break-word}
+    video{width:100%;max-height:280px;border-radius:12px;border:1px solid #123;background:#000}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #1f2e46;padding:8px;text-align:left;font-size:14px}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    /* Menú */
+    .menu{position:relative}
+    .menu-btn{padding:10px 14px;border-radius:10px;border:1px solid #234;background:#0b1728;display:flex;gap:8px;align-items:center}
+    .menu-panel{position:absolute;right:0;top:42px;background:#0d1c32;border:1px solid #123;border-radius:12px;min-width:220px;box-shadow:0 10px 30px #000a;padding:8px;z-index:50}
+    .menu-panel button{width:100%;text-align:left;margin:4px 0}
+    /* Tablero */
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+    .tag{display:inline-block;padding:2px 8px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:12px}
+    /* Modal + Toast */
+    #confirmModal{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:100}
+    #confirmCard{background:#10192b;border:1px solid #0b1f38;border-radius:16px;max-width:520px;width:92%;padding:16px}
+    #toastOk{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#0d1c32;border:1px solid #123;border-radius:12px;padding:10px 14px;box-shadow:0 10px 30px #000a;z-index:90}
+  </style>
+
+  <!-- Librerías (el SW las cachea) -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.error));
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <img class="brand" src="icons/logo.svg" alt="Logo" />
+        Parking – PWA
+      </h1>
+      <div class="menu">
+        <button id="menuBtn" class="menu-btn">☰ Menú</button>
+        <div id="menuPanel" class="menu-panel hidden">
+          <button class="btn" id="mEntrada">Entrada</button>
+          <button class="btn-warn" id="mSalida">Salida</button>
+          <button class="btn" id="mReportes">Reportes</button>
+          <button class="btn" id="mAuditoria">Auditoría</button>
+          <button class="btn" id="mFinDiaXLSX">Fin de día (.xlsx)</button>
+          <button class="btn" id="mFinDiaPDF">Fin de día (PDF)</button>
+          <button class="btn-ghost" id="mLogout">Cerrar sesión</button>
+          <button class="btn hidden" id="mLogin">Iniciar sesión</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- LOGIN -->
+    <section class="card" id="viewLogin">
+      <h2>Acceso</h2>
+      <div class="row">
+        <div><label>Usuario</label><input id="loginUser" placeholder="admin u operador" /></div>
+        <div><label>Clave</label><input id="loginPass" type="password" placeholder="*****" /></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn-ok" id="doLogin">Entrar</button>
+        <div class="muted">Admin: <span class="mono">12345</span> · Operador: <span class="mono">67890</span></div>
+      </div>
+    </section>
+
+    <!-- HOME -->
+    <section class="card hidden" id="viewHome">
+      <h2 id="homeTitle">Operación</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Vehículos en curso <span class="tag" id="tagOpenCount">0</span></h3>
+          <table id="tblLiveOpen">
+            <thead><tr><th>Patente</th><th>Ingreso</th><th>Transcurrido</th><th>Monto</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Salidas recientes</h3>
+          <table id="tblLiveClosed">
+            <thead><tr><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Monto</th><th>Pago</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHECK-IN -->
+    <section class="card hidden" id="viewCheckIn">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2>Entrada (Check-in)</h2>
+        <button class="btn-back" data-back>Atrás</button>
+      </div>
+      <div class="row">
+        <div><label>Patente</label><input id="patenteIn" class="upper" placeholder="AA-BB-11" maxlength="10" /></div>
+        <div><label>Saludo (por defecto)</label><input id="saludoIn" placeholder="Bienvenido!" /></div>
+        <div style="align-self:end"><button class="btn-ok" id="btnGenerar">Generar Ticket</button></div>
+      </div>
+
+      <!-- Modal de confirmación -->
+      <div id="confirmModal" class="hidden">
+        <div id="confirmCard">
+          <h3>Confirmar Check-in</h3>
+          <p class="muted">Revisa los datos antes de confirmar.</p>
+          <table style="width:100%;border-collapse:collapse;margin:8px 0">
+            <tbody>
+              <tr><th style="text-align:left;width:160px">Patente</th><td class="mono" id="c_plate"></td></tr>
+              <tr><th style="text-align:left">Saludo</th><td class="mono" id="c_hi"></td></tr>
+              <tr><th style="text-align:left">Hora de ingreso</th><td class="mono" id="c_in"></td></tr>
+            </tbody>
+          </table>
+          <div class="row" style="justify-content:flex-end">
+            <button class="btn-ghost" id="c_cancel">Cancelar</button>
+            <button class="btn-ok" id="c_ok">Confirmar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast de éxito -->
+      <div id="toastOk" class="hidden">✅ Ticket generado con éxito</div>
+    </section>
+
+    <!-- CHECK-OUT -->
+    <section class="card hidden" id="viewCheckOut">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2>Salida / Cobro</h2>
+        <button class="btn-back" data-back>Atrás</button>
+      </div>
+
+      <div class="row">
+        <button class="btn-warn" id="btnIniciar">Leer QR (cámara)</button>
+        <button class="btn-ghost" id="btnDetener">Detener</button>
+        <input type="file" id="qrFile" accept="image/*">
+      </div>
+      <video id="vid" playsinline muted class="hidden"></video>
+      <canvas id="frame" class="hidden"></canvas>
+
+      <div class="row" style="margin-top:12px">
+        <div><label>Ingresar ID manual (alternativa)</label><input id="manualId" placeholder="pega aquí el ID" /></div>
+        <div style="align-self:end"><button class="btn" id="btnBuscarManual">Buscar</button></div>
+      </div>
+
+      <div id="chargeArea" class="hidden" style="margin-top:12px">
+        <div class="row">
+          <div style="flex:2">
+            <table><tbody>
+              <tr><th>Patente</th><td id="chPlate" class="mono"></td></tr>
+              <tr><th>Ingreso</th><td id="chIn" class="mono"></td></tr>
+              <tr><th>Salida</th><td id="chOut" class="mono"></td></tr>
+              <tr><th>Duración</th><td id="chDur" class="mono"></td></tr>
+              <tr><th>Tarifa</th><td id="chTariff" class="mono"></td></tr>
+              <tr><th>Total</th><td id="chTotal" class="mono"></td></tr>
+            </tbody></table>
+          </div>
+          <div style="flex:1">
+            <div class="muted">Forma de pago</div>
+            <div class="row">
+              <button class="btn-ok" id="payCash">Efectivo</button>
+              <button class="btn" id="payTx">Transbank</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORTES -->
+    <section class="card hidden" id="viewReports">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2>Reportes</h2>
+        <button class="btn-back" data-back>Atrás</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnExportCSV">Exportar CSV</button>
+        <button class="btn" id="btnFinDiaXLSX">Cierre Día (.xlsx)</button>
+        <button class="btn" id="btnFinDiaPDF">Cierre Día (PDF)</button>
+      </div>
+      <table id="tblTickets">
+        <thead><tr><th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th><th>Pago</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- ADMIN -->
+    <section class="card hidden" id="viewAdmin">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2>Administración</h2>
+        <button class="btn-back" data-back>Atrás</button>
+      </div>
+      <div class="row">
+        <div class="card" style="flex:1">
+          <h3>Tarifas</h3>
+          <label>Primer tramo (min)</label><input id="tarFirstMinutes" type="number" min="1" step="1" />
+          <label>Primer tramo ($)</label><input id="tarFirstPrice" type="number" min="0" step="1" />
+          <label>Adicional por minuto ($)</label><input id="tarPerMin" type="number" min="0" step="1" />
+          <label>Mensaje de bienvenida</label><input id="cfgWelcome" placeholder="Bienvenido!" />
+          <label>Ancho papel ticket (mm)</label><input id="cfgPaperWidth" type="number" min="40" step="1" />
+          <div class="row" style="margin-top:8px"><button class="btn-ok" id="btnSaveTar">Guardar</button></div>
+          <div class="mono muted" id="tarView" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="flex:1">
+          <h3>Usuarios operadores</h3>
+          <div class="row">
+            <input id="opUser" placeholder="usuario" />
+            <input id="opPass" placeholder="clave" />
+            <button class="btn-ok" id="btnAddOp">Crear</button>
+          </div>
+          <table id="tblOps" style="margin-top:8px">
+            <thead><tr><th>Usuario</th><th>Acciones</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUDITORÍA -->
+    <section class="card hidden" id="viewAudit">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2>Auditoría</h2>
+        <button class="btn-back" data-back>Atrás</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnAuditCSV">Exportar auditoría CSV</button>
+      </div>
+      <table id="tblAudit">
+        <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+/* ====== Utilidades ====== */
+const TZ='America/Santiago'; // usada internamente
+const byId=(id)=>document.getElementById(id);
+const fmtDate=(iso)=> new Date(iso).toLocaleString('es-CL',{ timeZone: TZ, hour12:false });
+const fmtMoney=(n)=> `$ ${Number(n||0).toLocaleString('es-CL')}`;
+const nowISO=()=> new Date().toISOString();
+
+/* ====== Persistencia ====== */
+const store={ get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } }, set(k,v){ localStorage.setItem(k, JSON.stringify(v)); } };
+(function ensureDefaults(){
+  if(!store.get('users')){
+    store.set('users', [{user:'admin',pass:'12345',role:'admin'},{user:'operador',pass:'67890',role:'operador'}]);
+  }
+  if(!store.get('tariff')){
+    store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, welcome:'Bienvenido!', paperWidthMM:58, updatedAt: nowISO() });
+  }
+  if(!store.get('tickets')) store.set('tickets', {});
+  if(!store.get('payments')) store.set('payments', []);
+  if(!store.get('audit')) store.set('audit', []);
+})();
+
+/* ====== Auditoría ====== */
+function audit(action, detail=''){
+  const u = (session.user? `${session.user}(${session.role})` : 'anon');
+  const rows = store.get('audit', []);
+  rows.push({ at: nowISO(), user: u, action, detail });
+  store.set('audit', rows);
+}
+
+/* ====== Sesión / navegación ====== */
+const session={ user:null, role:null };
+function login(user,pass){ const u=store.get('users',[]).find(x=>x.user===user&&x.pass===pass); if(!u) return false; session.user=u.user; session.role=u.role; audit('login', session.user); return true; }
+function logout(){ audit('logout', session.user||''); session.user=null; session.role=null; navStack.length=0; updateHeader(); show('viewLogin', true); }
+
+const views=['viewLogin','viewHome','viewCheckIn','viewCheckOut','viewReports','viewAdmin','viewAudit'];
+const navStack=[];
+function show(id, skipPush=false){
+  const current = views.find(v => !byId(v).classList.contains('hidden'));
+  if(!skipPush && current && current!==id) navStack.push(current);
+  views.forEach(v=> byId(v).classList.add('hidden'));
+  byId(id).classList.remove('hidden');
+}
+function goBack(){
+  const prev = navStack.pop();
+  if(prev){ views.forEach(v=> byId(v).classList.add('hidden')); byId(prev).classList.remove('hidden'); }
+  else { show('viewHome', true); }
+}
+function wireBackButtons(){ document.querySelectorAll('[data-back]').forEach(b=> b.onclick=goBack); }
+wireBackButtons();
+
+/* ====== Header / Menú ====== */
+const menuBtn = byId('menuBtn'), menuPanel=byId('menuPanel');
+menuBtn.onclick = ()=> menuPanel.classList.toggle('hidden');
+document.addEventListener('click', (e)=>{ if(!menuPanel.contains(e.target) && e.target!==menuBtn){ menuPanel.classList.add('hidden'); } });
+
+function updateHeader(){
+  const isLogged = !!session.user;
+  byId('mEntrada').classList.toggle('hidden', !isLogged);
+  byId('mSalida').classList.toggle('hidden', !isLogged);
+  byId('mReportes').classList.toggle('hidden', !isLogged);
+  byId('mAuditoria').classList.toggle('hidden', !isLogged);
+  byId('mFinDiaXLSX').classList.toggle('hidden', !isLogged);
+  byId('mFinDiaPDF').classList.toggle('hidden', !isLogged);
+  byId('mLogout').classList.toggle('hidden', !isLogged);
+  byId('mLogin').classList.toggle('hidden', isLogged);
+  menuBtn.disabled = !isLogged;
+}
+
+byId('mEntrada').onclick=()=>{ show('viewCheckIn'); menuPanel.classList.add('hidden'); };
+byId('mSalida').onclick=()=>{ show('viewCheckOut'); menuPanel.classList.add('hidden'); };
+byId('mReportes').onclick=()=>{ fillTable(); show('viewReports'); menuPanel.classList.add('hidden'); };
+byId('mAuditoria').onclick=()=>{ fillAudit(); show('viewAudit'); menuPanel.classList.add('hidden'); };
+byId('mFinDiaXLSX').onclick=()=>{ exportEndOfDayXLSX(); menuPanel.classList.add('hidden'); };
+byId('mFinDiaPDF').onclick=()=>{ exportEndOfDayPDF(); menuPanel.classList.add('hidden'); };
+byId('mLogout').onclick=()=>{ logout(); };
+byId('mLogin').onclick=()=>{ show('viewLogin'); menuPanel.classList.add('hidden'); };
+
+/* ====== Login ====== */
+byId('doLogin').onclick=()=>{ const u=byId('loginUser').value.trim(); const p=byId('loginPass').value.trim();
+  if(!login(u,p)){ alert('Credenciales inválidas'); return; }
+  byId('homeTitle').textContent = session.role==='admin'? 'Operación (Administrador)':'Operación (Operador)';
+  updateHeader(); show('viewHome', true); refreshHomeBoard(true);
+};
+
+/* ====== Tarifa y cálculo ====== */
+function getTar(){ return store.get('tariff',{ firstMinutes:20, firstPrice:500, perMin:20, welcome:'Bienvenido!', paperWidthMM:58 }); }
+function setTar(t){ store.set('tariff', t); }
+function calcCharge(inISO,outISO){
+  const t=getTar();
+  const mins=Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
+  if(mins<=t.firstMinutes) return { mins, billable:0, total:t.firstPrice, t };
+  const extra = mins - t.firstMinutes;
+  const total = t.firstPrice + (extra * t.perMin);
+  return { mins, billable:extra, total, t };
+}
+
+/* ====== Tickets / Pagos ====== */
+function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+const SECRET='CAMBIAR_EN_PRODUCCION'; // HMAC demo
+function signId(id){ const sig = CryptoJS.HmacSHA256(id, SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return `${id}.${sig}`; }
+function verifySignedId(signed){ const [id,sig] = (signed||'').split('.'); if(!id||!sig) return null; const exp = CryptoJS.HmacSHA256(id, SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return sig===exp? id : null; }
+function saveTicket(id,data){ const map=store.get('tickets',{}); map[id]=data; store.set('tickets',map); }
+function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
+function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO()}); store.set('payments',pays); audit('charge', `id=${ticketId} total=${total} method=${method}`); }
+
+/* ====== Check-in (confirmación + toast) ====== */
+byId('saludoIn').value = getTar().welcome;
+byId('patenteIn').addEventListener('input', (e)=>{ const p=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(p,p); });
+
+let _pendingTicketData = null;
+
+byId('btnGenerar').onclick = () => {
+  const plate = byId('patenteIn').value.trim().toUpperCase();
+  const hi = (byId('saludoIn').value.trim() || getTar().welcome || 'Bienvenido!');
+  if (!plate){ alert('Ingresa la patente'); return; }
+  const map = store.get('tickets',{});
+  const dup = Object.values(map).find(t=>t.plate===plate && t.status==='open');
+  if(dup){ alert('Ya hay un ticket abierto para esta patente'); return; }
+
+  const inISO = nowISO();
+  _pendingTicketData = { plate, hi, inISO };
+  byId('c_plate').textContent = plate;
+  byId('c_hi').textContent    = hi;
+  byId('c_in').textContent    = fmtDate(inISO);
+  byId('confirmModal').classList.remove('hidden');
+};
+
+byId('c_cancel').onclick = () => {
+  _pendingTicketData = null;
+  byId('confirmModal').classList.add('hidden');
+};
+
+byId('c_ok').onclick = () => {
+  if(!_pendingTicketData){ byId('confirmModal').classList.add('hidden'); return; }
+  const id = genId();
+  const signed = signId(id);
+  const t = { id, signed, plate: _pendingTicketData.plate, hi: _pendingTicketData.hi, in: _pendingTicketData.inISO, out: null, status:'open' };
+  saveTicket(id, t);
+  audit('checkin', `id=${id} plate=${t.plate}`);
+
+  byId('confirmModal').classList.add('hidden');
+  const toast = byId('toastOk');
+  toast.classList.remove('hidden');
+  setTimeout(()=> toast.classList.add('hidden'), 1800);
+
+  byId('patenteIn').value = '';
+  _pendingTicketData = null;
+  refreshHomeBoard(true);
+};
+
+/* ====== Check-out: cámara + foto + manual ====== */
+let mediaStream=null, timer=null, detector=null;
+async function getDetector(){ if(!('BarcodeDetector' in window)) return null; if(!detector){ try{ detector=new BarcodeDetector({formats:['qr_code']}); }catch(_){ detector=null; } } return detector; }
+
+async function startScan(){
+  const det=await getDetector(); if(!det){ alert('El dispositivo no soporta lector directo. Usa la foto o el ID manual.'); return; }
+  try{
+    mediaStream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+    const vid=byId('vid'); vid.srcObject=mediaStream; await vid.play(); vid.classList.remove('hidden');
+    const frame=byId('frame');
+    timer=setInterval(async()=>{ const w=vid.videoWidth,h=vid.videoHeight; if(!w||!h) return; frame.width=w; frame.height=h; frame.getContext('2d').drawImage(vid,0,0,w,h);
+      try{ const codes=await det.detect(frame); if(codes&&codes[0]){ await stopScan(); handleSigned(codes[0].rawValue.trim(),'Cámara'); } }catch(_){}
+    },300);
+  }catch(err){ alert('No se pudo acceder a la cámara.'); }
+}
+async function stopScan(){ if(timer){clearInterval(timer); timer=null;} if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } byId('vid').classList.add('hidden'); }
+byId('btnIniciar').onclick=startScan;
+byId('btnDetener').onclick=stopScan;
+
+byId('qrFile').addEventListener('change', async (ev)=>{
+  const file = ev.target.files?.[0]; if(!file) return;
+  const img = new Image(); img.onload = () => {
+    const c = document.createElement('canvas'); c.width=img.width; c.height=img.height;
+    const ctx = c.getContext('2d'); ctx.drawImage(img,0,0);
+    const data = ctx.getImageData(0,0,c.width,c.height);
+    const code = jsQR(data.data, data.width, data.height);
+    if(code && code.data){ handleSigned(code.data.trim(),'Foto'); }
+    else{ alert('No se pudo leer el QR desde la imagen'); }
+  };
+  img.onerror = ()=> alert('No se pudo cargar la imagen');
+  img.src = URL.createObjectURL(file);
+});
+
+byId('btnBuscarManual').onclick=()=>{ const raw=byId('manualId').value.trim(); if(!raw){alert('Ingresa ID'); return;} handleSigned(raw,'Manual'); };
+
+function handleSigned(raw, source){
+  const id = verifySignedId(raw) || null;
+  if(!id){ alert('QR inválido o no firmado'); audit('qr_invalid', (raw||'').slice(0,12)+'...'); return; }
+  const t=getTicket(id);
+  if(!t){ alert(`No se encontró ticket para ID ${id}`); return; }
+  const outISO=nowISO(); const calc=calcCharge(t.in,outISO);
+  byId('chargeArea').classList.remove('hidden');
+  byId('chPlate').textContent=t.plate; byId('chIn').textContent=fmtDate(t.in); byId('chOut').textContent=fmtDate(outISO);
+  byId('chDur').textContent=`${calc.mins} min (adicionales ${calc.billable})`;
+  byId('chTariff').textContent=`Primer ${calc.t.firstMinutes}m = ${fmtMoney(calc.t.firstPrice)} | +${fmtMoney(calc.t.perMin)}/min`;
+  byId('chTotal').textContent=fmtMoney(calc.total);
+  byId('chargeArea').dataset.id=id; byId('chargeArea').dataset.total=calc.total;
+  audit('checkout_preview', `id=${id} from=${source}`);
+}
+function doCharge(method){
+  const id=byId('chargeArea').dataset.id; const total=Number(byId('chargeArea').dataset.total||0); const t=getTicket(id);
+  if(!t){ alert('Ticket no encontrado'); return; }
+  t.out=nowISO(); t.status='closed'; t.payMethod=method; saveTicket(id,t); savePayment(id,total,method);
+  alert(`Cobro: ${fmtMoney(total)} (${method})`);
+  refreshHomeBoard(true);
+  show('viewHome');
+}
+byId('payCash').onclick=()=> doCharge('efectivo');
+byId('payTx').onclick=()=> doCharge('transbank');
+
+/* ====== Reportes ====== */
+function fillTable(){
+  const tbody=byId('tblTickets').querySelector('tbody'); tbody.innerHTML='';
+  const map=store.get('tickets',{}); const rows=Object.values(map).sort((a,b)=> (a.in<b.in?1:-1));
+  const pays=store.get('payments',[]); const m=new Map(pays.map(p=>[p.ticketId,{total:p.total,method:p.method}]));
+  for(const t of rows){
+    const pay=m.get(t.id);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="mono">${t.id}</td><td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td class="mono">${t.out?fmtDate(t.out):'-'}</td><td>${t.status}</td><td class="mono">${t.out?(pay?.total||0).toLocaleString('es-CL'):'-'}</td><td>${t.out?(pay?.method||'-'):'-'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+/* ====== Fin de día ====== */
+function endOfDayRows(isoDay){
+  const map=store.get('tickets',{}); const pays=store.get('payments',[]);
+  const m=new Map(pays.map(p=>[p.ticketId,p]));
+  const out=[]; let total=0, count=0;
+  for(const t of Object.values(map)){
+    const dayIn = new Date(t.in).toLocaleDateString('en-CA',{timeZone:TZ});
+    const p = m.get(t.id);
+    if(dayIn===isoDay && t.status==='closed'){
+      count++; const val = p?.total||0; total+=val;
+      out.push({ Patente: t.plate, Ingreso: fmtDate(t.in), Salida: fmtDate(t.out), Monto: val, Medio: p?.method||'' });
+    }
+  }
+  return { rows: out, total, count };
+}
+function exportEndOfDayXLSX(){
+  const day = new Date().toLocaleDateString('en-CA',{timeZone:TZ});
+  const {rows,total,count} = endOfDayRows(day);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Cierre');
+  const ts = new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false});
+  const ws2 = XLSX.utils.aoa_to_sheet([['Fecha',day],['Generado',ts],['Autos',count],['Total',total]]);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumen');
+  XLSX.writeFile(wb, `cierre_${day}.xlsx`);
+}
+function exportEndOfDayPDF(){
+  const day = new Date().toLocaleDateString('en-CA',{timeZone:TZ});
+  const {rows,total,count} = endOfDayRows(day);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const ts = new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false});
+  doc.setFontSize(14); doc.text(`Cierre de Día – ${day}`, 14, 18);
+  doc.setFontSize(10); doc.text(`Generado: ${ts}`, 14, 25);
+  let y=34;
+  doc.text('Patente',14,y); doc.text('Ingreso',44,y); doc.text('Salida',105,y); doc.text('Monto',156,y); doc.text('Medio',180,y);
+  y+=4; doc.line(14,y,200,y); y+=6;
+  rows.forEach(r=>{
+    doc.text(String(r.Patente),14,y);
+    doc.text(String(r.Ingreso),44,y);
+    doc.text(String(r.Salida),105,y);
+    doc.text(fmtMoney(r.Monto),156,y,{align:'right'});
+    doc.text(String(r.Medio),180,y);
+    y+=6; if(y>270){ doc.addPage(); y=20; }
+  });
+  y+=6; doc.line(14,y,200,y); y+=8;
+  doc.setFontSize(12);
+  doc.text(`Total autos: ${count}`,14,y);
+  doc.text(`Total ventas: ${fmtMoney(total)}`,100,y);
+  doc.save(`cierre_${day}.pdf`);
+}
+
+/* ====== Auditoría ====== */
+function fillAudit(){
+  const tbody=byId('tblAudit').querySelector('tbody'); tbody.innerHTML='';
+  const rows=store.get('audit',[]);
+  for(const a of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="mono">${fmtDate(a.at)}</td><td>${a.user}</td><td>${a.action}</td><td class="mono">${a.detail||''}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+byId('btnAuditCSV')?.addEventListener('click', ()=>{
+  const rows=store.get('audit',[]);
+  const data=[['Fecha','Usuario','Acción','Detalle']];
+  rows.forEach(a=> data.push([fmtDate(a.at),a.user,a.action,a.detail||'']));
+  const csv=data.map(r=> r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`auditoria_${new Date().toLocaleDateString('en-CA',{timeZone:TZ})}.csv`; a.click();
+});
+
+/* ====== Admin ====== */
+function renderTariff(){
+  const t=getTar();
+  byId('tarFirstMinutes').value=t.firstMinutes;
+  byId('tarFirstPrice').value=t.firstPrice;
+  byId('tarPerMin').value=t.perMin;
+  byId('cfgWelcome').value=t.welcome||'Bienvenido!';
+  byId('cfgPaperWidth').value=t.paperWidthMM||58;
+  byId('tarView').textContent=JSON.stringify(t,null,2);
+}
+byId('btnSaveTar').onclick=()=>{
+  const t={ firstMinutes:Number(byId('tarFirstMinutes').value||20),
+            firstPrice:Number(byId('tarFirstPrice').value||500),
+            perMin:Number(byId('tarPerMin').value||20),
+            welcome: byId('cfgWelcome').value.trim() || 'Bienvenido!',
+            paperWidthMM: Number(byId('cfgPaperWidth').value||58),
+            updatedAt: nowISO() };
+  setTar(t); renderTariff(); audit('tariff_update', JSON.stringify(t)); alert('Configuración guardada');
+};
+
+function renderOps(){
+  const tbody=byId('tblOps').querySelector('tbody'); tbody.innerHTML='';
+  const users=store.get('users',[]).filter(u=>u.role==='operador');
+  for(const u of users){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${u.user}</td><td><button class="btn-ghost" data-del="${u.user}">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  }
+  Array.from(tbody.querySelectorAll('button[data-del]')).forEach(b=> b.onclick=()=>{
+    const who=b.getAttribute('data-del'); let users=store.get('users',[]);
+    users=users.filter(x=> !(x.user===who && x.role==='operador')); store.set('users',users); audit('op_delete', who); renderOps();
+  });
+}
+byId('btnAddOp').onclick=()=>{
+  const u=byId('opUser').value.trim(); const p=byId('opPass').value.trim();
+  if(!u||!p){alert('Usuario y clave son requeridos'); return;}
+  const users=store.get('users',[]); if(users.find(x=>x.user===u)){ alert('Ya existe un usuario con ese nombre'); return; }
+  users.push({user:u,pass:p,role:'operador'}); store.set('users',users); audit('op_create', u);
+  byId('opUser').value=''; byId('opPass').value=''; renderOps();
+};
+
+/* ====== Tablero Home (tiempo real) ====== */
+function refreshHomeBoard(force=false){
+  if(byId('viewHome').classList.contains('hidden') && !force) return;
+  const openBody = byId('tblLiveOpen').querySelector('tbody');
+  const closedBody = byId('tblLiveClosed').querySelector('tbody');
+  openBody.innerHTML=''; closedBody.innerHTML='';
+  const tix = Object.values(store.get('tickets',{}));
+  const pays=store.get('payments',[]); const m=new Map(pays.map(p=>[p.ticketId,p]));
+  const open = tix.filter(t=>t.status==='open').sort((a,b)=> a.in<b.in?1:-1);
+  byId('tagOpenCount').textContent = open.length;
+  for(const t of open){
+    const calc = calcCharge(t.in, nowISO());
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td class="mono">${calc.mins} min</td><td class="mono">${fmtMoney(calc.total)}</td>`;
+    openBody.appendChild(tr);
+  }
+  const closed = tix.filter(t=>t.status==='closed').sort((a,b)=> a.out<b.out?1:-1).slice(0,10);
+  for(const t of closed){
+    const p=m.get(t.id); const val = p?.total||0; const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td class="mono">${fmtDate(t.out)}</td><td class="mono">${fmtMoney(val)}</td><td>${p?.method||''}</td>`;
+    closedBody.appendChild(tr);
+  }
+}
+setInterval(()=> refreshHomeBoard(false), 15000);
+
+show('viewLogin', true);
+updateHeader();
+</script>
+</body>
+</html>
