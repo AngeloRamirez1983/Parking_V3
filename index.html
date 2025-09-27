@@ -14,7 +14,8 @@
   --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9;
   --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --badge:#0d1c32; --border:#123;
 }
-*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
 .container{max-width:1200px;margin:0 auto;padding:16px}
 header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 h1{margin:8px 0 0;font-size:20px}
@@ -249,12 +250,12 @@ hr{border:0;border-top:1px solid #1f2e46}
 </div>
 
 <script>
-/* ========= Config ========= */
+/* ========= Config (Demo) ========= */
 const TZ='America/Santiago';
-const AUTO_CHARGE=false;           // ahora NO autocobra
+const AUTO_CHARGE=false;           // no autocobra; muestra monto grande + botones
 const DEFAULT_METHOD='efectivo';
-const INACTIVITY_MIN=60;           // auto-logout tras 60 min sin uso
-const ADMIN_MASTER='CAMBIA-ESTA-CLAVE-MAESTRA'; // <--- CAMBIAR en producción!
+const INACTIVITY_MIN=60;           // auto-logout 60 min
+const ALWAYS_LOGIN=true;           // DEMO: siempre exigir login al abrir
 
 /* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
@@ -268,14 +269,10 @@ function signId(id){ const sig=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.
 function verifySigned(signed){ const [id,sig]=(signed||'').split('.'); if(!id||!sig)return null; const exp=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return sig===exp? id:null; }
 
 /* ========= Storage ========= */
-const store={
-  get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } },
-  set(k,v){ localStorage.setItem(k, JSON.stringify(v)); },
-  del(k){ localStorage.removeItem(k); }
-};
+const store={ get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } }, set(k,v){ localStorage.setItem(k, JSON.stringify(v)); }, del(k){ localStorage.removeItem(k); } };
 if(!store.get('tickets')) store.set('tickets',{});      // id -> ticket
 if(!store.get('payments')) store.set('payments',[]);    // pagos
-if(!store.get('lostTickets')) store.set('lostTickets',[]); // reimpresiones por pérdida
+if(!store.get('lostTickets')) store.set('lostTickets',[]);
 if(!store.get('users')) store.set('users',[
   {user:'admin', pass:'12345', role:'admin'},
   {user:'operador', pass:'67890', role:'operador'}
@@ -288,16 +285,13 @@ const session = { user:null, role:null }; let inactivityTimer=null;
 function saveSession(){ store.set('session', {user:session.user, role:session.role, at:nowISO()}); }
 function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
 function clearSession(){ store.del('session'); session.user=null; session.role=null; stopIdleTimer(); }
-function startIdleTimer(){
-  stopIdleTimer();
-  inactivityTimer=setTimeout(()=>{ alert('Sesión cerrada por inactividad'); logout(); }, INACTIVITY_MIN*60*1000);
-}
+function startIdleTimer(){ stopIdleTimer(); inactivityTimer=setTimeout(()=>{ alert('Sesión cerrada por inactividad'); logout(); }, INACTIVITY_MIN*60*1000); }
 function stopIdleTimer(){ if(inactivityTimer){ clearTimeout(inactivityTimer); inactivityTimer=null; } }
 ['click','keydown','mousemove','wheel','touchstart'].forEach(ev=> addEventListener(ev, startIdleTimer, {passive:true}));
 
 function login(u,p){
   const users=store.get('users',[]);
-  const user = users.find(x=>x.user===u && (x.pass===p || (u==='admin' && p===ADMIN_MASTER)));
+  const user = users.find(x=>x.user===u && x.pass===p);
   if(!user) return false;
   session.user=user.user; session.role=user.role; saveSession(); startIdleTimer(); return true;
 }
@@ -389,23 +383,63 @@ function setTicket(id,t){ const map=store.get('tickets',{}); map[id]=t; store.se
 function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
-  const { jsPDF }=window.jspdf; const W=45,H=250,M=3; const doc=new jsPDF({unit:'mm',format:[W,H],orientation:'portrait'});
-  let y=8, cx=W/2, inner=W-M*2;
+  const { jsPDF } = window.jspdf;
+  const W = 45, H = 250, M = 3;               // mm
+  const doc = new jsPDF({ unit:'mm', format:[W,H], orientation:'portrait' });
+
+  let y = 8, cx = W/2, inner = W - M*2;
+
+  // Título (wrap)
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=5; });
+  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
+
+  // Saludo (wrap)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.splitTextToSize((welcome||'¡Bienvenido!'), inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=5; }); y+=2;
-  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.text(plate,cx,y,{align:'center'}); y+=8;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Ingreso:',M,y);
-  const inStr = new Date(inISO).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
-  doc.splitTextToSize(inStr, inner/1.1).forEach((line,i)=>{ doc.text(line,W-M,y+i*4,{align:'right'}); }); y+=5;
-  doc.setDrawColor(120); doc.line(M,y,W-M,y); y+=4;
+  doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
+  y += 2;
+
+  // Patente
+  doc.setFont('helvetica','bold'); doc.setFontSize(15);
+  doc.text(plate, cx, y, {align:'center'}); y += 8;
+
+  // Hora de ingreso (wrap a la derecha)
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Ingreso:', M, y);
+  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
+  const inLines = doc.splitTextToSize(inStr, inner * 0.9);
+  inLines.forEach((line, i) => { doc.text(line, W - M, y + i*4, {align:'right'}); });
+  y += Math.max(5, inLines.length * 4 + 1);
+
+  // Separador
+  doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
+
+  // Mensaje recordatorio (wrap)
   doc.setFontSize(8);
-  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=4; }); y+=1;
-  doc.setFontSize(8); doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line=>{ doc.text(line,M,y); y+=4; }); y+=2;
-  if(qrDataURL){ const QRW=35,QRH=35,x=(W-QRW)/2; doc.addImage(qrDataURL,'JPEG',x,y,QRW,QRH); y+=QRH+6; }
-  doc.setFontSize(7); doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'}); y+=4;
-  const blob=doc.output('blob'); const url=URL.createObjectURL(blob); const w=window.open(url); if(w){ w.onload=()=>{ try{w.focus(); w.print();}catch(_){}} } else { doc.save(`ticket_${plate}.pdf`);}
+  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 4; });
+  y += 1;
+
+  // ID (wrap)
+  doc.setFontSize(8);
+  doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += 4; });
+  y += 2;
+
+  // QR centrado (JPEG) – 35 mm
+  if (qrDataURL) {
+    const QRW = 35, QRH = 35, x = (W - QRW) / 2;
+    doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
+    y += QRH + 6;
+  }
+
+  // Pie
+  doc.setFontSize(7);
+  doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'}); y += 4;
+
+  // Imprimir / Guardar
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url);
+  if (w) { w.onload = () => { try { w.focus(); w.print(); } catch(_) {} }; }
+  else { doc.save(`ticket_${plate}.pdf`); }
 }
 
 $('btnGenerar').onclick=()=>{
@@ -434,18 +468,20 @@ function handleSigned(raw){
 function setMsg(text,isErr=false){ const el=$('salidaMsg'); el.textContent=text; el.style.background=isErr?'#3a1111':'#0d1c32'; }
 $('scanInput').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=$('scanInput').value.trim(); if(!raw) return; handleSigned(raw); $('scanInput').select(); } });
 
-function confirmCharge(total,method){
-  return confirm(`Confirma cobro de $${money(total)} por ${method}?`);
-}
 function doCharge(method){
   const id=$('chargeArea').dataset.id; const total=Number($('chargeArea').dataset.total||0); const t=getTicket(id);
   if(!t) return alert('Ticket no encontrado');
-  if(!confirmCharge(total,method)) return;
+  if(!confirm(`Confirma cobro de $${money(total)} por ${method}?`)) return;
   t.out=nowISO(); t.status='closed'; t.payMethod=method; setTicket(id,t); savePayment(id,total,method);
   $('chargeArea').classList.add('hidden'); setMsg(`Cobrado $${money(total)} (${method})`);
   applyFilter(); updateOccupancyUI();
+  // volver a Entrada y foco en patente
+  navStack.length = 0;
+  show('viewEntrada');
+  $('patenteIn').focus();
 }
-$('btnCobrarEfe').onclick=()=> doCharge('efectivo'); $('btnCobrarTx').onclick=()=> doCharge('transbank');
+$('btnCobrarEfe').onclick=()=> doCharge('efectivo');
+$('btnCobrarTx').onclick =()=> doCharge('transbank');
 
 /* ========= Reportes + Filtros ========= */
 function defaultDates(){ const d=todayLocal(); $('filterFrom').value=d; $('filterTo').value=d; }
@@ -517,7 +553,7 @@ $('btnFinDiaPDF').onclick=()=>{
   });
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
   doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Autos: ${rows.length}`,100,y);
-  // Sección tickets perdidos
+  // Tickets perdidos
   const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
   y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
   doc.text('Patente',14,y); doc.text('Dueño',45,y); doc.text('Usuario',110,y); doc.text('Fecha',165,y); y+=4; doc.line(14,y,200,y); y+=6;
@@ -557,7 +593,7 @@ function renderSearch(){
   tbody.querySelectorAll('button[data-id]').forEach(b=> b.onclick=()=>{ selectedForReprint=b.dataset.id; $('btnReprintLost').disabled=false; });
 }
 function resetLostForm(){ $('lostOwnerRut').value=''; $('lostOwnerName').value=''; $('lostUserRut').value=''; $('lostUserName').value=''; }
-function validRutLike(s){ return !!(s && s.length>=8); } // validación básica
+function validRutLike(s){ return !!(s && s.length>=8); }
 $('btnReprintLost').onclick=()=>{
   if(!selectedForReprint) return;
   const t=getTicket(selectedForReprint); if(!t) return alert('Ticket no encontrado');
@@ -565,18 +601,16 @@ $('btnReprintLost').onclick=()=>{
   const userRut=$('lostUserRut').value.trim(), userName=$('lostUserName').value.trim();
   if(!validRutLike(ownerRut)||!ownerName||!validRutLike(userRut)||!userName){ return alert('Completa RUTs y nombres.'); }
 
-  // Registrar en lostTickets
   const lost=store.get('lostTickets',[]);
   lost.push({ ticketId:t.id, plate:t.plate, ownerRut, ownerName, userRut, userName, at:nowISO(), by:session.user });
   store.set('lostTickets',lost);
 
-  // Reimprimir ticket original
   const qrDataURL=buildQRDataURL(t.signed);
   printTicketPDF({ plate:t.plate, inISO:t.in, signed:t.signed, qrDataURL, welcome:'Reimpresión por ticket perdido' });
   alert('Reimpresión registrada.'); resetLostForm();
 };
 
-/* ========= Inicio ========= */
+/* ========= Login Flow ========= */
 function doLoginFlow(){
   const u=$('loginUser').value.trim(), p=$('loginPass').value.trim();
   if(!login(u,p)){ alert('Credenciales inválidas'); return; }
@@ -585,7 +619,11 @@ function doLoginFlow(){
 $('doLogin').onclick=doLoginFlow;
 ['loginUser','loginPass'].forEach(id=> $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doLoginFlow(); } }));
 
+/* ========= Init ========= */
 (function init(){
+  // DEMO: siempre mostrar login al abrir
+  if (ALWAYS_LOGIN) { clearSession(); updateHeader(); show('viewLogin'); defaultDates(); return; }
+
   if(loadSession()){ updateHeader(); show('viewEntrada'); $('patenteIn').focus(); startIdleTimer(); }
   else{ updateHeader(); show('viewLogin'); defaultDates(); }
   defaultDates();
