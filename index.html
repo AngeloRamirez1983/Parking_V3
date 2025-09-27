@@ -55,6 +55,13 @@ hr{border:0;border-top:1px solid #1f2e46}
 .modal .table{max-height:50vh;overflow:auto;display:block}
 .modal .table table{width:100%}
 .backbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+
+/* Users admin */
+.users-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.users-form{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:10px 0}
+.users-form>*{flex:1 1 220px}
+.role-pill{padding:4px 10px;border-radius:999px;border:1px solid #1d3659;background:#0c1a2d;font-size:12px}
+.actions{display:flex;gap:8px}
 </style>
 
 <!-- libs -->
@@ -200,6 +207,8 @@ hr{border:0;border-top:1px solid #1f2e46}
   <!-- ADMIN -->
   <section class="card hidden" id="viewAdmin">
     <div class="backbar"><button class="btn-ghost" id="backAdmin">← Atrás</button><h2>Administración</h2><span class="badge" id="freeOnAdmin">— / —</span></div>
+
+    <!-- Parámetros -->
     <div class="row">
       <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
       <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
@@ -210,6 +219,34 @@ hr{border:0;border-top:1px solid #1f2e46}
       <div><label>Capacidad total de espacios</label><input id="tCapacity" type="number" min="0" /></div>
       <div style="align-self:flex-end"><button id="btnSaveTariff" class="btn-ok">Guardar parámetros</button></div>
     </div>
+
+    <hr/>
+
+    <!-- Gestión de usuarios -->
+    <div class="users-head">
+      <h3>Usuarios</h3>
+      <span class="muted">Admin puede crear/editar/eliminar usuarios</span>
+    </div>
+
+    <!-- Form crear -->
+    <div class="users-form">
+      <div><label>Usuario</label><input id="newUser" placeholder="nuevo usuario" autocomplete="off" /></div>
+      <div><label>Contraseña</label><input id="newPass" placeholder="******" type="password" /></div>
+      <div>
+        <label>Rol</label>
+        <select id="newRole">
+          <option value="operador">Operador</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style="align-self:flex-end"><button id="btnAddUser" class="btn-ok">Agregar usuario</button></div>
+    </div>
+
+    <!-- Tabla -->
+    <table class="table" id="tblUsers">
+      <thead><tr><th>Usuario</th><th>Rol</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
   </section>
 </div>
 
@@ -231,7 +268,7 @@ hr{border:0;border-top:1px solid #1f2e46}
     </div>
     <div class="table" style="margin-top:10px">
       <table>
-        <thead><tr><th>ID</th><th>Patente</th><th>Ingreso</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th></th><th>ID</th><th>Patente</th><th>Ingreso</th><th>Estado</th></tr></thead>
         <tbody id="searchBody"></tbody>
       </table>
     </div>
@@ -245,7 +282,26 @@ hr{border:0;border-top:1px solid #1f2e46}
       <div><label>Nombre usuario</label><input id="lostUserName" placeholder="Nombre del usuario" /></div>
       <div style="align-self:flex-end"><button class="btn-warn" id="btnReprintLost" disabled>Reimprimir ticket perdido</button></div>
     </div>
-    <div class="muted" style="margin-top:8px">* Se registrará en reportes y fin de día.</div>
+    <div class="muted" style="margin-top:8px">* Selecciona exactamente 1 ticket arriba para habilitar la reimpresión. Se registrará en reportes y fin de día.</div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR USUARIO -->
+<div id="modalUser" class="modal-backdrop">
+  <div class="modal">
+    <div class="backbar"><h3>Editar usuario</h3><button class="btn-ghost" id="closeUserModal">✕ Cerrar</button></div>
+    <div class="row">
+      <div><label>Usuario</label><input id="editUser" disabled /></div>
+      <div>
+        <label>Rol</label>
+        <select id="editRole">
+          <option value="operador">Operador</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div><label>Nueva contraseña (opcional)</label><input id="editPass" type="password" placeholder="dejar en blanco para no cambiar" /></div>
+      <div style="align-self:flex-end"><button class="btn-ok" id="btnSaveUser">Guardar cambios</button></div>
+    </div>
   </div>
 </div>
 
@@ -297,14 +353,6 @@ function login(u,p){
 }
 function logout(){ clearSession(); updateHeader(); show('viewLogin'); }
 
-function updateHeader(){
-  const logged = !!session.user;
-  $('btnLogout').classList.toggle('hidden', !logged);
-  $('goAdmin').classList.toggle('hidden', !(logged && session.role==='admin'));
-  $('who').textContent = logged ? `Sesión: ${session.user} (${session.role})` : '';
-  updateOccupancyUI();
-}
-
 /* ========= Navegación ========= */
 const VIEWS=['viewLogin','viewEntrada','viewSalida','viewReportes','viewAdmin'];
 const navStack=[];
@@ -315,6 +363,14 @@ function show(id){
 }
 function pushView(id){ const current=VIEWS.find(v=> !$(v).classList.contains('hidden')); if(current) navStack.push(current); show(id); }
 function back(){ const prev=navStack.pop(); if(prev) show(prev); }
+
+function updateHeader(){
+  const logged = !!session.user;
+  $('btnLogout').classList.toggle('hidden', !logged);
+  $('goAdmin').classList.toggle('hidden', !(logged && session.role==='admin'));
+  $('who').textContent = logged ? `Sesión: ${session.user} (${session.role})` : '';
+  updateOccupancyUI();
+}
 
 $('goEntrada').onclick=()=>{ if(!session.user) return show('viewLogin'); pushView('viewEntrada'); $('patenteIn').focus(); };
 $('goSalida').onclick =()=>{ if(!session.user) return show('viewLogin'); pushView('viewSalida'); $('scanInput').focus(); };
@@ -353,6 +409,7 @@ function calcCharge(inISO, outISO){
 function loadAdminUI(){
   const t=getTariff(); $('tFirstMin').value=t.firstMinutes; $('tFirstPrice').value=t.firstPrice;
   $('tPerMin').value=t.perMin; $('tDailyCap').value=t.dailyCap; $('tCapacity').value=getCapacity();
+  renderUsersTable();
 }
 $('btnSaveTariff').onclick=()=>{
   if(!(session.user && session.role==='admin')) return alert('Solo admin');
@@ -364,6 +421,89 @@ $('btnSaveTariff').onclick=()=>{
   };
   const cap=Math.max(0, parseInt($('tCapacity').value||'0',10));
   setTariff(t); setCapacity(cap); updateOccupancyUI(); alert('Parámetros guardados.');
+};
+
+/* ===== Usuarios (CRUD) ===== */
+function getUsers(){ return store.get('users',[]); }
+function setUsers(list){ store.set('users', list); }
+function countAdmins(list){ return list.filter(u=>u.role==='admin').length; }
+
+function renderUsersTable(){
+  const tbody=$('tblUsers').querySelector('tbody'); tbody.innerHTML='';
+  const users=getUsers().slice().sort((a,b)=> a.user.localeCompare(b.user));
+  users.forEach(u=>{
+    const tr=document.createElement('tr');
+    const pill=`<span class="role-pill">${u.role}</span>`;
+    const actions=`
+      <div class="actions">
+        <button class="btn" data-edit="${u.user}">Editar</button>
+        <button class="btn-cancel" data-del="${u.user}">Eliminar</button>
+      </div>`;
+    tr.innerHTML=`<td class="mono">${u.user}</td><td>${pill}</td><td>${actions}</td>`;
+    tbody.appendChild(tr);
+  });
+  // acciones
+  tbody.querySelectorAll('button[data-edit]').forEach(b=> b.onclick=()=> openEditUser(b.dataset.edit));
+  tbody.querySelectorAll('button[data-del]').forEach(b=> b.onclick=()=> deleteUser(b.dataset.del));
+}
+
+$('btnAddUser').onclick=()=>{
+  if(!(session.user && session.role==='admin')) return alert('Solo admin');
+  const user=($('newUser').value||'').trim();
+  const pass=($('newPass').value||'').trim();
+  const role=$('newRole').value;
+  if(!user || !pass) return alert('Usuario y contraseña son obligatorios.');
+  const list=getUsers();
+  if(list.find(u=>u.user===user)) return alert('Ese usuario ya existe.');
+  list.push({user, pass, role});
+  setUsers(list);
+  $('newUser').value=''; $('newPass').value=''; $('newRole').value='operador';
+  renderUsersTable();
+  alert('Usuario creado.');
+};
+
+function deleteUser(user){
+  if(!(session.user && session.role==='admin')) return alert('Solo admin');
+  if(user===session.user) return alert('No puedes eliminar la sesión actual.');
+  const list=getUsers();
+  const u=list.find(x=>x.user===user);
+  if(!u) return;
+  if(u.role==='admin' && countAdmins(list)<=1) return alert('Debe existir al menos un admin.');
+  if(!confirm(`¿Eliminar usuario "${user}"?`)) return;
+  const next=list.filter(x=>x.user!==user);
+  setUsers(next);
+  renderUsersTable();
+  alert('Usuario eliminado.');
+}
+
+/* Modal editar */
+const modalUser=$('modalUser');
+function openEditUser(username){
+  const list=getUsers();
+  const u=list.find(x=>x.user===username); if(!u) return;
+  $('editUser').value=u.user;
+  $('editRole').value=u.role;
+  $('editPass').value='';
+  modalUser.style.display='flex';
+}
+$('closeUserModal').onclick=()=> modalUser.style.display='none';
+$('btnSaveUser').onclick=()=>{
+  const username=$('editUser').value;
+  const newRole=$('editRole').value;
+  const newPass=$('editPass').value;
+  const list=getUsers();
+  const idx=list.findIndex(x=>x.user===username);
+  if(idx<0) return;
+  // Validar admin mínimo
+  if(list[idx].role==='admin' && newRole!=='admin' && countAdmins(list)<=1){
+    return alert('Debe existir al menos un admin.');
+  }
+  list[idx].role=newRole;
+  if(newPass) list[idx].pass=newPass;
+  setUsers(list);
+  modalUser.style.display='none';
+  renderUsersTable();
+  alert('Cambios guardados.');
 };
 
 /* ========= Entrada: generar ticket + PDF (45x250 con QR JPEG 35mm) ========= */
@@ -381,6 +521,12 @@ function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.se
 function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
 function setTicket(id,t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
 function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
+
+/* Advertencia de patente duplicada (ticket abierto) */
+function plateHasOpen(plate){
+  plate = (plate||'').toUpperCase().trim();
+  const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
+}
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
@@ -446,6 +592,19 @@ $('btnGenerar').onclick=()=>{
   if(!session.user) return show('viewLogin');
   const plate=$('patenteIn').value.trim().toUpperCase(); const welcome=$('saludoIn').value.trim()||'¡Bienvenido!';
   if(!plate){ alert('Ingresa la patente'); $('patenteIn').focus(); return; }
+
+  // ⚠️ Advertencia de duplicado
+  if (plateHasOpen(plate)) {
+    // Buscar el ticket abierto más reciente para mostrar referencia
+    const map=store.get('tickets',{}); 
+    const openOnPlate=Object.values(map)
+      .filter(t=>t.plate.toUpperCase()===plate && t.status==='open')
+      .sort((a,b)=> a.in < b.in ? 1 : -1);
+    const lastIn = openOnPlate.length ? fmtDate(openOnPlate[0].in) : 'fecha desconocida';
+    const ok = confirm(`⚠️ La patente ${plate} ya tiene un ticket abierto (ingreso: ${lastIn}).\n¿Deseas crear otro ticket igualmente?`);
+    if(!ok) return; // cancela la operación
+  }
+
   const id=genId(), signed=signId(id), inISO=nowISO();
   const t={id,signed,plate,in:inISO,out:null,status:'open',by:session.user}; saveTicket(t);
   renderQRPreview(signed); $('idPreview').textContent=signed;
@@ -570,12 +729,11 @@ $('btnFinDiaPDF').onclick=()=>{
 /* ========= Modal Buscar Vehículo / Ticket perdido ========= */
 const modal=$('modalSearch');
 function openSearch(){ modal.style.display='flex'; renderSearch(); }
-function closeSearch(){ modal.style.display='none'; selectedForReprint=null; $('btnReprintLost').disabled=true; resetLostForm(); }
+function closeSearch(){ modal.style.display='none'; resetLostForm(); updateLostSelectionState(); }
 $('btnBuscar').onclick=()=>{ if(!session.user) return show('viewLogin'); openSearch(); };
 $('closeSearch').onclick=closeSearch; $('btnSearchGo').onclick=renderSearch;
 $('searchPlate').addEventListener('input',()=>{ const el=$('searchPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
-let selectedForReprint=null;
 function renderSearch(){
   const tbody=$('searchBody'); tbody.innerHTML='';
   const plateQ=($('searchPlate').value||'').trim().toUpperCase(); const st=$('searchStatus').value;
@@ -584,19 +742,44 @@ function renderSearch(){
     if(plateQ && !t.plate.toUpperCase().includes(plateQ)) return false;
     return true;
   }).sort((a,b)=>(a.in<b.in?1:-1));
+
   rows.forEach(t=>{
     const tr=document.createElement('tr');
-    const btn=`<button class="btn-warn" data-id="${t.id}">Ticket perdido / Reimprimir</button>`;
-    tr.innerHTML=`<td class="mono">${t.id}</td><td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td>${t.status==='open'?'En estacionamiento':'Salido'}</td><td>${btn}</td>`;
+    tr.innerHTML=`
+      <td><input type="checkbox" class="selTicket" data-id="${t.id}" /></td>
+      <td class="mono">${t.id}</td>
+      <td class="mono">${t.plate}</td>
+      <td class="mono">${fmtDate(t.in)}</td>
+      <td>${t.status==='open'?'En estacionamiento':'Salido'}</td>`;
     tbody.appendChild(tr);
   });
-  tbody.querySelectorAll('button[data-id]').forEach(b=> b.onclick=()=>{ selectedForReprint=b.dataset.id; $('btnReprintLost').disabled=false; });
+
+  // manejar selección
+  tbody.querySelectorAll('.selTicket').forEach(cb=>{
+    cb.addEventListener('change', updateLostSelectionState);
+  });
+  updateLostSelectionState();
 }
+
 function resetLostForm(){ $('lostOwnerRut').value=''; $('lostOwnerName').value=''; $('lostUserRut').value=''; $('lostUserName').value=''; }
+
 function validRutLike(s){ return !!(s && s.length>=8); }
+
+function getSelectedTicketIds(){
+  return Array.from(document.querySelectorAll('#searchBody .selTicket:checked')).map(cb=> cb.dataset.id);
+}
+
+function updateLostSelectionState(){
+  const ids = getSelectedTicketIds();
+  $('btnReprintLost').disabled = (ids.length!==1);
+}
+
 $('btnReprintLost').onclick=()=>{
-  if(!selectedForReprint) return;
-  const t=getTicket(selectedForReprint); if(!t) return alert('Ticket no encontrado');
+  const ids = getSelectedTicketIds();
+  if(ids.length!==1){ alert('Selecciona exactamente 1 ticket para reimprimir.'); return; }
+  const ticketId = ids[0];
+  const t=getTicket(ticketId); if(!t) return alert('Ticket no encontrado');
+
   const ownerRut=$('lostOwnerRut').value.trim(), ownerName=$('lostOwnerName').value.trim();
   const userRut=$('lostUserRut').value.trim(), userName=$('lostUserName').value.trim();
   if(!validRutLike(ownerRut)||!ownerName||!validRutLike(userRut)||!userName){ return alert('Completa RUTs y nombres.'); }
@@ -607,7 +790,8 @@ $('btnReprintLost').onclick=()=>{
 
   const qrDataURL=buildQRDataURL(t.signed);
   printTicketPDF({ plate:t.plate, inISO:t.in, signed:t.signed, qrDataURL, welcome:'Reimpresión por ticket perdido' });
-  alert('Reimpresión registrada.'); resetLostForm();
+  alert('Reimpresión registrada.');
+  resetLostForm();
 };
 
 /* ========= Login Flow ========= */
@@ -622,12 +806,10 @@ $('doLogin').onclick=doLoginFlow;
 /* ========= Init ========= */
 (function init(){
   // DEMO: siempre mostrar login al abrir
-  if (ALWAYS_LOGIN) { clearSession(); updateHeader(); show('viewLogin'); defaultDates(); return; }
-
-  if(loadSession()){ updateHeader(); show('viewEntrada'); $('patenteIn').focus(); startIdleTimer(); }
-  else{ updateHeader(); show('viewLogin'); defaultDates(); }
-  defaultDates();
+  clearSession(); updateHeader(); show('viewLogin'); defaultDates();
 })();
+
+function defaultDates(){ const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; }
 </script>
 </body>
 </html>
