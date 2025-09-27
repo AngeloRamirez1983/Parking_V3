@@ -13,14 +13,15 @@
 :root{ --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;}
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
-.container{max-width:1100px;margin:0 auto;padding:16px}
-header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 h1{margin:8px 0 0;font-size:20px}
 .card{background:var(--card);border:1px solid #0b1f38;border-radius:16px;padding:16px;box-shadow:0 10px 30px #0007;margin:12px 0}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
 .row>*{flex:1 1 240px}
 input,button,select{padding:12px 14px;border-radius:12px;border:1px solid #234;background:#0b1728;color:#eef2ff}
 input.upper{text-transform:uppercase}
+input.biginput{font-size:20px;padding:16px 18px}
 button{cursor:pointer;font-weight:600}
 .btn{background:#0f2a44}
 .btn-ok{background:#16803d;border-color:#146c33}
@@ -30,12 +31,15 @@ button{cursor:pointer;font-weight:600}
 .hidden{display:none !important}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .tag{display:inline-block;padding:6px 10px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:13px}
+.badge{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:13px}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{border-bottom:1px solid #1f2e46;padding:8px;text-align:left}
 hr{border:0;border-top:1px solid #1f2e46}
 .muted{color:var(--muted)}
-.biginput{font-size:20px;padding:16px 18px}
 .center{display:flex;align-items:center;justify-content:center}
+.right{display:flex;align-items:center;gap:12px}
+.kpi{display:flex;gap:8px;align-items:center}
+.kpi b{font-size:14px}
 </style>
 
 <!-- libs -->
@@ -53,7 +57,8 @@ hr{border:0;border-top:1px solid #1f2e46}
 <div class="container">
   <header>
     <h1>Parking – Estacionamiento Rengo</h1>
-    <div class="row" style="max-width:900px">
+    <div class="right">
+      <span id="occupancyTag" class="badge">Disponibles: — / Capacidad: —</span>
       <button class="btn" id="goEntrada">Entrada (Alt+E)</button>
       <button class="btn-warn" id="goSalida">Salida (Alt+S)</button>
       <button class="btn" id="goReportes">Reportes</button>
@@ -76,7 +81,10 @@ hr{border:0;border-top:1px solid #1f2e46}
 
   <!-- ENTRADA -->
   <section class="card hidden" id="viewEntrada">
-    <h2>Entrada</h2>
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <h2 style="flex:0 0 auto">Entrada</h2>
+      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnEntrada">—</b></div>
+    </div>
     <div class="row">
       <div>
         <label>Patente</label>
@@ -100,7 +108,10 @@ hr{border:0;border-top:1px solid #1f2e46}
 
   <!-- SALIDA -->
   <section class="card hidden" id="viewSalida">
-    <h2>Salida / Cobro</h2>
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <h2 style="flex:0 0 auto">Salida / Cobro</h2>
+      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnSalida">—</b></div>
+    </div>
     <p class="muted">Lector QR USB: apunta el cursor al campo grande de abajo. La mayoría de lectores envía <b>Enter</b> al final → se cobra automático (efectivo por defecto).</p>
     <div class="row">
       <div style="flex:1 1 100%">
@@ -135,12 +146,31 @@ hr{border:0;border-top:1px solid #1f2e46}
   <section class="card hidden" id="viewReportes">
     <h2>Reportes</h2>
     <div class="row">
+      <div>
+        <label>Estado</label>
+        <select id="filterStatus">
+          <option value="todos">Todos</option>
+          <option value="abiertos">En estacionamiento</option>
+          <option value="cerrados">Salidos</option>
+        </select>
+      </div>
+      <div>
+        <label>Buscar por patente</label>
+        <input id="filterPlate" placeholder="AA-BB-11" class="upper" />
+      </div>
+      <div style="align-self:flex-end">
+        <button class="btn" id="btnApplyFilter">Aplicar filtro</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:6px">
       <button class="btn" id="btnExportCSV">Exportar CSV</button>
       <button class="btn" id="btnFinDiaPDF">Fin de día (PDF)</button>
     </div>
     <table class="table" id="tblTickets">
       <thead>
-        <tr><th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th><th>Pago</th></tr>
+        <tr>
+          <th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th><th>Pago</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -148,15 +178,21 @@ hr{border:0;border-top:1px solid #1f2e46}
 
   <!-- ADMIN -->
   <section class="card hidden" id="viewAdmin">
-    <h2>Administración</h2>
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <h2 style="flex:0 0 auto">Administración</h2>
+      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnAdmin">—</b></div>
+    </div>
     <div class="row">
       <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
       <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
       <div><label>Precio por minuto adicional ($)</label><input id="tPerMin" type="number" min="0" /></div>
       <div><label>Máximo diario por ticket ($)</label><input id="tDailyCap" type="number" min="0" /></div>
+    </div>
+    <div class="row">
+      <div><label>Capacidad total de espacios</label><input id="tCapacity" type="number" min="0" /></div>
       <div style="align-self:flex-end"><button id="btnSaveTariff" class="btn-ok">Guardar parámetros</button></div>
     </div>
-    <p class="muted">El total cobrado por un ticket en un mismo día no superará el <b>máximo diario</b>. Por defecto: $10.000.</p>
+    <p class="muted">El total cobrado por un ticket en un mismo día no superará el <b>máximo diario</b>. Capacidad predeterminada: <b>50</b>.</p>
   </section>
 </div>
 
@@ -192,14 +228,15 @@ const store={
   set(k,v){ localStorage.setItem(k, JSON.stringify(v)); },
   del(k){ localStorage.removeItem(k); }
 };
+// estructuras
 if(!store.get('tickets')) store.set('tickets',{});      // id -> ticket
 if(!store.get('payments')) store.set('payments',[]);    // pagos
 if(!store.get('users')) store.set('users',[
   {user:'admin', pass:'12345', role:'admin'},
   {user:'operador', pass:'67890', role:'operador'}
 ]);
-// Tarifa con tope diario
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
+if(store.get('capacity')==null) store.set('capacity', 50);
 
 /* ========= Sesión / Login ========= */
 const session = { user:null, role:null };
@@ -218,6 +255,7 @@ function updateHeader(){
   $('btnLogout').classList.toggle('hidden', !logged);
   $('goAdmin').classList.toggle('hidden', !(logged && session.role==='admin'));
   $('who').textContent = logged ? `Sesión: ${session.user} (${session.role})` : '';
+  updateOccupancyUI();
 }
 
 $('doLogin').onclick = ()=>{
@@ -234,16 +272,34 @@ $('btnLogout').onclick = ()=>{
 
 /* ========= Navegación y atajos ========= */
 const VIEWS=['viewLogin','viewEntrada','viewSalida','viewReportes','viewAdmin'];
-function show(id){ VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden'); }
+function show(id){ VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden'); updateOccupancyUI(); if(id==='viewSalida') $('scanInput').focus();}
 $('goEntrada').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); };
 $('goSalida').onclick =()=>{ if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); };
-$('goReportes').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} fillTable(); show('viewReportes'); };
-$('goAdmin').onclick=()=>{ if(!(session.user && session.role==='admin')){ show('viewLogin'); return;} loadTariffUI(); show('viewAdmin'); };
+$('goReportes').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} applyFilter(); show('viewReportes'); };
+$('goAdmin').onclick=()=>{ if(!(session.user && session.role==='admin')){ show('viewLogin'); return;} loadAdminUI(); show('viewAdmin'); };
 
 window.addEventListener('keydown',(e)=>{
   if(e.altKey && (e.key==='e'||e.key==='E')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); }
   if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); }
 });
+
+/* ========= Ocupación ========= */
+function getCapacity(){ return Number(store.get('capacity',50))||0; }
+function setCapacity(v){ store.set('capacity', Number(v)||0); }
+function countOpenTickets(){
+  const map=store.get('tickets',{}); let open=0;
+  Object.values(map).forEach(t=>{ if(t.status==='open') open++; });
+  return open;
+}
+function updateOccupancyUI(){
+  const cap = getCapacity();
+  const open = countOpenTickets();
+  const free = Math.max(0, cap - open);
+  const text = `Disponibles: ${free} / Capacidad: ${cap}`;
+  $('occupancyTag').textContent = text;
+  const targets=['freeOnEntrada','freeOnSalida','freeOnAdmin'];
+  targets.forEach(id=>{ const el=$(id); if(el) el.textContent = `${free} / ${cap}`; });
+}
 
 /* ========= Tarifa + Cálculo (con tope diario) ========= */
 function getTariff(){ return store.get('tariff',{ firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 }); }
@@ -254,18 +310,18 @@ function calcCharge(inISO, outISO){
   let total;
   if(mins<=t.firstMinutes) total = t.firstPrice;
   else total = t.firstPrice + (mins - t.firstMinutes) * t.perMin;
-  // aplica tope diario por ticket
-  total = Math.min(total, t.dailyCap||Infinity);
+  total = Math.min(total, t.dailyCap||Infinity); // tope diario
   return {mins, total, cap:t.dailyCap||Infinity};
 }
 
 /* ========= Admin UI ========= */
-function loadTariffUI(){
+function loadAdminUI(){
   const t=getTariff();
   $('tFirstMin').value = t.firstMinutes;
   $('tFirstPrice').value = t.firstPrice;
   $('tPerMin').value = t.perMin;
   $('tDailyCap').value = t.dailyCap;
+  $('tCapacity').value = getCapacity();
 }
 $('btnSaveTariff').onclick = ()=>{
   if(!(session.user && session.role==='admin')){ alert('Solo admin'); return; }
@@ -275,11 +331,13 @@ $('btnSaveTariff').onclick = ()=>{
     perMin:       Math.max(0, parseInt($('tPerMin').value||'0',10)),
     dailyCap:     Math.max(0, parseInt($('tDailyCap').value||'0',10))
   };
-  setTariff(t);
+  const cap = Math.max(0, parseInt($('tCapacity').value||'0',10));
+  setTariff(t); setCapacity(cap);
+  updateOccupancyUI();
   alert('Parámetros guardados.');
 };
 
-/* ========= Entrada: generar ticket + PDF (45x250 con QR) ========= */
+/* ========= Entrada: generar ticket + PDF (45x250 con QR JPEG) ========= */
 $('patenteIn').addEventListener('input', (e)=>{
   const pos=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(pos,pos);
 });
@@ -287,13 +345,19 @@ function renderQRPreview(text){
   const el=$('qrPreview'); el.innerHTML='';
   new QRCode(el, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
 }
+/* QR como JPEG para máxima compatibilidad */
 function buildQRDataURL(text){
-  const tmp=document.createElement('div');
+  const tmp = document.createElement('div');
   new QRCode(tmp, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-  const img = tmp.querySelector('img') || tmp.querySelector('canvas');
-  if(img && img.tagName==='IMG') return img.src;
-  if(img && img.tagName==='CANVAS') return img.toDataURL('image/png');
-  return '';
+  const imgOrCanvas = tmp.querySelector('canvas') || tmp.querySelector('img');
+  const canvas = document.createElement('canvas'); canvas.width=180; canvas.height=180;
+  const ctx = canvas.getContext('2d');
+  if (imgOrCanvas) {
+    try { ctx.drawImage(imgOrCanvas, 0, 0); } catch(_) {}
+  } else {
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,180,180);
+  }
+  return canvas.toDataURL('image/jpeg', 0.95);
 }
 function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.set('tickets',map); }
 function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
@@ -302,48 +366,61 @@ function savePayment(ticketId,total,method){ const pays=store.get('payments',[])
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
-  // tamaño solicitado: 45mm x 250mm
-  const W=45, H=250;
+  const W = 45, H = 250, M=3;                // mm
   const doc = new jsPDF({ unit:'mm', format:[W,H], orientation:'portrait' });
 
-  let y=8, cx=W/2;
+  let y = 8, cx=W/2, inner=W-M*2;
+
+  // Título con auto-wrap
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.text('Bienvenido a Estacionamiento Rengo', cx, y, {align:'center'}); y+=6;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.text(welcome||'Bienvenido!', cx, y, {align:'center'}); y+=8;
+  const title = 'Bienvenido a Estacionamiento Rengo';
+  doc.splitTextToSize(title, inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
 
+  // Saludo con auto-wrap
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  const hello = (welcome||'Bienvenido!');
+  doc.splitTextToSize(hello, inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
+  y += 2;
+
+  // Patente
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
-  doc.text(plate, cx, y, {align:'center'}); y+=8;
+  doc.text(plate, cx, y, {align:'center'}); y += 8;
 
+  // Hora ingreso
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.text('Ingreso:', 3, y);
-  const inStr = new Date(inISO).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
-  doc.text(inStr, W-3, y, {align:'right'}); y+=5;
+  doc.text('Ingreso:', M, y);
+  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
+  doc.text(inStr, W - M, y, {align:'right'}); y += 5;
 
-  doc.setDrawColor(120); doc.line(3,y,W-3,y); y+=4;
+  // Separador
+  doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
 
+  // Mensaje recordatorio
   doc.setFontSize(8);
-  doc.text('Recuerde presentar su ticket para el cobro', cx, y, {align:'center'}); y+=5;
+  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 4; });
+  y += 1;
 
-  // ID en varias líneas si es necesario
+  // ID con wrap
   doc.setFontSize(8);
-  const idParts = doc.splitTextToSize(`ID: ${signed}`, W-6);
-  idParts.forEach(line=>{ doc.text(line, 3, y); y+=4; });
+  doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += 4; });
+  y += 2;
 
-  if(qrDataURL){
-    const QRW=30, QRH=30, x=(W-QRW)/2;
-    doc.addImage(qrDataURL, 'PNG', x, y, QRW, QRH);
-    y+=QRH+6;
+  // QR centrado (JPEG)
+  if (qrDataURL) {
+    const QRW = 32, QRH = 32, x = (W - QRW) / 2;
+    doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
+    y += QRH + 6;
   }
 
+  // Pie
   doc.setFontSize(8);
-  doc.text('¡Conserve este ticket!', cx, y, {align:'center'}); y+=4;
+  doc.text('¡Conserve este ticket!', cx, y, {align:'center'}); y += 4;
 
-  // imprime
+  // Imprimir / Guardar
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   const w = window.open(url);
-  if(w){ w.onload = () => { try{ w.focus(); w.print(); }catch(_){} }; }
+  if (w) { w.onload = () => { try { w.focus(); w.print(); } catch(_) {} }; }
   else { doc.save(`ticket_${plate}.pdf`); }
 }
 
@@ -366,9 +443,10 @@ $('btnGenerar').onclick = () => {
   printTicketPDF({ plate, inISO, signed, qrDataURL, welcome });
 
   $('patenteIn').value=''; $('patenteIn').focus();
+  updateOccupancyUI(); // –1 disponible (se recalcula por abiertos)
 };
 
-/* ========= Salida / Cobro (lector) ========= */
+/* ========= Salida / Cobro (lector USB) ========= */
 function handleSigned(raw, auto=true){
   if(!session.user){ show('viewLogin'); return; }
   const id = verifySigned(raw);
@@ -417,18 +495,30 @@ function doCharge(method){
   $('chargeArea').classList.add('hidden');
   $('salidaMsg').textContent = `Cobrado ${money(total)} (${method})`;
   $('salidaMsg').style.background = '#0d1c32';
-  fillTable();
+  applyFilter();         // refresca reportes si están abiertos
+  updateOccupancyUI();   // +1 disponible (se recalcula por abiertos)
 }
 $('btnCobrarEfe').onclick=()=> doCharge('efectivo');
 $('btnCobrarTx').onclick =()=> doCharge('transbank');
 
-/* ========= Reportes ========= */
+/* ========= Reportes + Filtro ========= */
+function getFilteredTickets(){
+  const map = store.get('tickets',{});
+  const all = Object.values(map);
+  const status = $('filterStatus').value; // todos/abiertos/cerrados
+  const plateQ = $('filterPlate').value.trim().toUpperCase();
+  return all.filter(t=>{
+    if(status==='abiertos'  && t.status!=='open')    return false;
+    if(status==='cerrados'  && t.status!=='closed')  return false;
+    if(plateQ && !t.plate.toUpperCase().includes(plateQ)) return false;
+    return true;
+  }).sort((a,b)=> (a.in<b.in?1:-1));
+}
 function fillTable(){
   const tbody = $('tblTickets').querySelector('tbody'); tbody.innerHTML='';
-  const map = store.get('tickets',{});
-  const pays=store.get('payments',[]);
+  const pays = store.get('payments',[]);
   const pm = new Map(pays.map(p=>[p.ticketId,p]));
-  const rows = Object.values(map).sort((a,b)=> (a.in<b.in?1:-1));
+  const rows = getFilteredTickets();
   for(const t of rows){
     const pay = pm.get(t.id);
     const tr = document.createElement('tr');
@@ -437,17 +527,25 @@ function fillTable(){
       <td class="mono">${t.plate}</td>
       <td class="mono">${fmtDate(t.in)}</td>
       <td class="mono">${t.out?fmtDate(t.out):'-'}</td>
-      <td>${t.status}</td>
+      <td>${t.status==='open'?'En estacionamiento':'Salido'}</td>
       <td class="mono">${t.out? money(pay?.total||0): '-'}</td>
       <td>${t.out? (pay?.method||'-') : '-'}</td>`;
     tbody.appendChild(tr);
   }
 }
+function applyFilter(){ fillTable(); }
+$('btnApplyFilter').onclick = applyFilter;
+$('filterPlate').addEventListener('input', ()=>{ // mayúsculas
+  const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos);
+});
+
+/* Exportes */
 $('btnExportCSV').onclick = ()=>{
   const rows=[['ID','Patente','Ingreso','Salida','Estado','Total','Pago']];
-  const map=store.get('tickets',{}); const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  for(const t of Object.values(map)){
-    const p=pm.get(t.id); rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status,t.out?(p?.total||0):'',t.out?(p?.method||''):'']);
+  const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
+  for(const t of getFilteredTickets()){
+    const p=pm.get(t.id);
+    rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status==='open'?'En estacionamiento':'Salido',t.out?(p?.total||0):'',t.out?(p?.method||''):'']);
   }
   const csv = rows.map(r=> r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
   const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
