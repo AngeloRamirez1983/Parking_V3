@@ -2,34 +2,34 @@
   "name": "Parking – Estacionamiento Rengo",
   "short_name": "Parking Rengo",
   "description": "Registro y cobro de estacionamiento: entradas, salidas con QR, reportes X/Z, usuarios y tarifas.",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "id": "/Parking_V3/",
+  "start_url": "/Parking_V3/",
+  "scope": "/Parking_V3/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b1220",
   "theme_color": "#0ea5e9",
   "categories": ["business", "utilities", "productivity"],
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/Parking_V3/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/Parking_V3/icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/Parking_V3/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/Parking_V3/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     {
       "name": "Entrada",
       "short_name": "Entrada",
       "description": "Ir a la pantalla de Entrada",
-      "url": "/#entrada",
-      "icons": [{ "src": "icons/shortcut-entrada.png", "sizes": "96x96", "type": "image/png" }]
+      "url": "/Parking_V3/#entrada",
+      "icons": [{ "src": "/Parking_V3/icons/shortcut-entrada.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "Salida",
       "short_name": "Salida",
       "description": "Ir a la pantalla de Salida",
-      "url": "/#salida",
-      "icons": [{ "src": "icons/shortcut-salida.png", "sizes": "96x96", "type": "image/png" }]
+      "url": "/Parking_V3/#salida",
+      "icons": [{ "src": "/Parking_V3/icons/shortcut-salida.png", "sizes": "96x96", "type": "image/png" }]
     }
   ]
 }
