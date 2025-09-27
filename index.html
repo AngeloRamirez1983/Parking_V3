@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Parking – Estacionamiento Espacio Quintalba - Rengo</title>
+<title>Parking – Estacionamiento Rengo</title>
 
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0ea5e9" />
@@ -31,6 +31,7 @@ button{cursor:pointer;font-weight:600}
 .btn-warn{background:#b96a09;border-color:#9a5808}
 .btn-ghost{background:#0d1526;border-color:#15213a}
 .btn-cancel{background:#7a1010;border-color:#5b0c0c}
+.btn.active{outline:2px solid var(--accent); box-shadow:0 0 0 2px #0a2a44 inset}
 .hidden{display:none !important}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .tag{display:inline-block;padding:6px 10px;border-radius:9999px;background:var(--badge);border:1px solid var(--border);font-size:13px}
@@ -68,6 +69,12 @@ hr{border:0;border-top:1px solid #1f2e46}
 .summary .box{background:#0d1c32;border:1px solid #234;border-radius:14px;padding:12px 16px}
 .summary .box h4{margin:0 0 4px 0;font-size:14px;color:#93a4c0}
 .summary .box .big{font-size:22px;font-weight:800}
+
+/* Diseño alternativo */
+body.alt .card{border-radius:8px; box-shadow:0 8px 18px #0006}
+body.alt .btn{border-radius:8px}
+body.alt .kpi-large{border-radius:8px}
+body.alt input, body.alt select{border-radius:8px}
 </style>
 
 <!-- libs -->
@@ -86,17 +93,18 @@ hr{border:0;border-top:1px solid #1f2e46}
 <div class="container">
   <header>
     <div class="toolbar">
-      <h1>Parking – Espacio Quintalba - Rengo</h1>
+      <h1>Parking – Estacionamiento Rengo</h1>
       <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
     </div>
     <div class="toolbar">
       <button class="btn" id="goEntrada">Entrada (Alt+E)</button>
-      <button class="btn-warn" id="goSalida">Salida (Alt+S)</button>
+      <button class="btn" id="goSalida">Salida (Alt+S)</button>
       <button class="btn" id="goReportes">Reportes</button>
       <button class="btn" id="btnBuscar">Buscar Vehículo</button>
       <button class="btn hidden" id="goAdmin">Admin</button>
       <button class="btn-ghost hidden" id="btnLogout">Cerrar sesión</button>
       <span id="who" class="muted"></span>
+      <label class="tag" style="cursor:pointer"><input type="checkbox" id="toggleDesign" style="margin-right:6px">Diseño alternativo</label>
     </div>
   </header>
 
@@ -179,7 +187,7 @@ hr{border:0;border-top:1px solid #1f2e46}
         <select id="filterStatus">
           <option value="todos">Todos</option>
           <option value="abiertos">En estacionamiento</option>
-          <option value="cerrados">Salidos</option>
+          <option value="cerrados">Fuera del estacionamiento</option>
         </select>
       </div>
       <div>
@@ -202,12 +210,10 @@ hr{border:0;border-top:1px solid #1f2e46}
     <!-- Totales visibles del rango filtrado -->
     <div class="summary" id="summaryBoxes">
       <div class="box"><h4>Total ventas (rango)</h4><div class="big" id="sumTotal">$0</div></div>
-      <div class="box"><h4>Vehículos salidos</h4><div class="big" id="sumCount">0</div></div>
+      <div class="box"><h4>Vehículos fuera</h4><div class="big" id="sumCount">0</div></div>
     </div>
 
     <div class="row" style="margin-top:6px">
-      <button class="btn" id="btnExportXLSX">Exportar XLSX</button>
-      <button class="btn" id="btnFinDiaPDF">Fin de día (PDF)</button>
       <button class="btn" id="btnCierreX">Cierre X (XLSX+PDF)</button>
       <button class="btn-warn" id="btnCierreZ">Cierre Z (XLSX+PDF)</button>
     </div>
@@ -276,7 +282,7 @@ hr{border:0;border-top:1px solid #1f2e46}
         <select id="searchStatus">
           <option value="todos">Todos</option>
           <option value="open">En estacionamiento</option>
-          <option value="closed">Salido</option>
+          <option value="closed">Fuera del estacionamiento</option>
         </select>
       </div>
       <div style="align-self:flex-end"><button class="btn" id="btnSearchGo">Buscar</button></div>
@@ -323,16 +329,17 @@ hr{border:0;border-top:1px solid #1f2e46}
 <script>
 /* ========= Config (Demo) ========= */
 const TZ='America/Santiago';
-const AUTO_CHARGE=false;           // no autocobra; muestra monto grande + botones
+const AUTO_CHARGE=false;
 const DEFAULT_METHOD='efectivo';
-const INACTIVITY_MIN=60;           // auto-logout 60 min
-const ALWAYS_LOGIN=true;           // DEMO: siempre exigir login al abrir
+const INACTIVITY_MIN=60;
+const ALWAYS_LOGIN=true;
 
 /* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
 const fmtDate = (iso)=> new Date(iso).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
 const nowISO = ()=> new Date().toISOString();
 const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); // YYYY-MM-DD
+function yesterLocal(){ const d=new Date(); const opt={timeZone:TZ}; const d2=new Date(d.toLocaleString('en-US',opt)); d2.setDate(d2.getDate()-1); return d2.toLocaleDateString('en-CA',opt); }
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
@@ -341,8 +348,8 @@ function verifySigned(signed){ const [id,sig]=(signed||'').split('.'); if(!id||!
 
 /* ========= Storage ========= */
 const store={ get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } }, set(k,v){ localStorage.setItem(k, JSON.stringify(v)); }, del(k){ localStorage.removeItem(k); } };
-if(!store.get('tickets')) store.set('tickets',{});      // id -> ticket
-if(!store.get('payments')) store.set('payments',[]);    // pagos
+if(!store.get('tickets')) store.set('tickets',{});      
+if(!store.get('payments')) store.set('payments',[]);    
 if(!store.get('lostTickets')) store.set('lostTickets',[]);
 if(!store.get('users')) store.set('users',[
   {user:'admin', pass:'12345', role:'admin'},
@@ -350,9 +357,10 @@ if(!store.get('users')) store.set('users',[
 ]);
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 if(store.get('capacity')==null) store.set('capacity', 50);
-if(!store.get('zClosedDate')) store.set('zClosedDate', ''); // YYYY-MM-DD del último cierre Z
+if(!store.get('zClosedDate')) store.set('zClosedDate', '');         // bloqueo día actual (manual)
+if(!store.get('zAutoLog')) store.set('zAutoLog', {});               // { 'YYYY-MM-DD': true } días ya auto-Z
 
-/* ========= Sesión / Login + Inactividad ========= */
+/* ========= Sesión ========= */
 const session = { user:null, role:null }; let inactivityTimer=null;
 function saveSession(){ store.set('session', {user:session.user, role:session.role, at:nowISO()}); }
 function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
@@ -369,11 +377,17 @@ function login(u,p){
 }
 function logout(){ clearSession(); updateHeader(); show('viewLogin'); }
 
-/* ========= Navegación ========= */
+/* ========= Navegación + Active Tab ========= */
 const VIEWS=['viewLogin','viewEntrada','viewSalida','viewReportes','viewAdmin'];
 const navStack=[];
+const navButtons = { viewEntrada: 'goEntrada', viewSalida: 'goSalida', viewReportes: 'goReportes', viewAdmin: 'goAdmin' };
+function setActiveTab(id){
+  Object.values(navButtons).forEach(bid=> $(bid)?.classList.remove('active'));
+  const btnId = navButtons[id]; if(btnId) $(btnId).classList.add('active');
+}
 function show(id){
   VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden');
+  setActiveTab(id);
   updateOccupancyUI();
   if(id==='viewSalida') $('scanInput').focus();
   if(id==='viewEntrada'||id==='viewSalida') refreshZBanners();
@@ -401,6 +415,18 @@ window.addEventListener('keydown',(e)=>{
   if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); if(!session.user) return show('viewLogin'); pushView('viewSalida'); $('scanInput').focus(); }
 });
 
+/* ========= Diseño alternativo ========= */
+const DESIGN_KEY='altDesign';
+(function loadDesignPref(){
+  const alt = !!store.get(DESIGN_KEY,false);
+  document.body.classList.toggle('alt', alt);
+  $('toggleDesign').checked = alt;
+})();
+$('toggleDesign').addEventListener('change', (e)=>{
+  document.body.classList.toggle('alt', e.target.checked);
+  store.set(DESIGN_KEY, e.target.checked);
+});
+
 /* ========= Ocupación ========= */
 function getCapacity(){ return Number(store.get('capacity',50))||0; }
 function setCapacity(v){ store.set('capacity', Number(v)||0); }
@@ -412,7 +438,7 @@ function updateOccupancyUI(){
   ['freeOnEntrada','freeOnSalida','freeOnAdmin'].forEach(id=>{ const el=$(id); if(el) el.textContent=`${free} / ${cap}`; });
 }
 
-/* ========= Tarifa + Cálculo (tope diario) ========= */
+/* ========= Tarifa + Cálculo ========= */
 function getTariff(){ return store.get('tariff',{ firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 }); }
 function setTariff(t){ store.set('tariff', t); }
 function calcCharge(inISO, outISO){
@@ -422,7 +448,7 @@ function calcCharge(inISO, outISO){
   return {mins,total,cap:t.dailyCap||Infinity};
 }
 
-/* ========= Cierre Z (bloqueo del día) ========= */
+/* ========= Cierre Z (bloqueo manual del día actual) ========= */
 function getZClosedDate(){ return store.get('zClosedDate','')||''; }
 function setZClosedDate(d){ store.set('zClosedDate', d||''); }
 function zLockedToday(){ return getZClosedDate()===todayLocal(); }
@@ -545,13 +571,11 @@ function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.se
 function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
 function setTicket(id,t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
 function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
-
 /* Duplicado patente (ticket abierto) */
 function plateHasOpen(plate){
   plate = (plate||'').toUpperCase().trim();
   const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
 }
-
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
   const W = 45, H = 250, M = 3;
@@ -561,7 +585,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
   // Título
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
+  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
   // Saludo
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
@@ -572,13 +596,13 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y += 8;
 
-  // Hora de ingreso (mejor wrap y mayor salto)
+  // Hora de ingreso (wrap seguro)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Ingreso:', M, y);
   const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
-  const inLines = doc.splitTextToSize(inStr, inner * 0.75); // más estrecho
+  const inLines = doc.splitTextToSize(inStr, inner * 0.75);
   inLines.forEach((line, i) => { doc.text(line, W - M, y + i*lh, {align:'right'}); });
-  y += Math.max(lh, inLines.length * lh) + 3; // más colchón
+  y += Math.max(lh, inLines.length * lh) + 3;
 
   // Separador
   doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
@@ -638,7 +662,7 @@ function handleSigned(raw){
   if(zLockedToday()){ setMsg('Cierre Z activo: no se pueden realizar cobros.',true); return; }
   const id=verifySigned(raw); if(!id){ setMsg('QR/ID inválido',true); return; }
   const t=getTicket(id); if(!t){ setMsg('Ticket no encontrado',true); return; }
-  if(t.status==='closed'){ setMsg('Ticket ya cerrado',true); return; }
+  if(t.status==='closed'){ setMsg('El vehículo ya está fuera del estacionamiento.',true); return; }
   const outISO=nowISO(); const {mins,total,cap}=calcCharge(t.in,outISO);
   $('chPlate').textContent=t.plate; $('chIn').textContent=fmtDate(t.in); $('chOut').textContent=fmtDate(outISO);
   $('chDur').textContent=String(mins); $('chCap').textContent=money(cap); $('bigAmount').textContent='$'+money(total);
@@ -693,7 +717,7 @@ function fillTable(){
       <td class="mono">${t.plate}</td>
       <td class="mono">${fmtDate(t.in)}</td>
       <td class="mono">${t.out?fmtDate(t.out):'-'}</td>
-      <td>${t.status==='open'?'En estacionamiento':'Salido'}</td>
+      <td>${t.status==='open'?'En estacionamiento':'Fuera del estacionamiento'}</td>
       <td class="mono">${t.out? money(p?.total||0): '-'}</td>
       <td>${t.out? (p?.method||'-') : '-'}</td>
       <td>${t.by||''}</td>`;
@@ -707,34 +731,8 @@ function applyFilter(){ fillTable(); }
 $('btnApplyFilter').onclick=applyFilter;
 $('filterPlate').addEventListener('input',()=>{ const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
-/* Export XLSX (rango filtrado) */
-$('btnExportXLSX').onclick=()=>{
-  const wb=XLSX.utils.book_new();
-  const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  const rows=[['ID','Patente','Ingreso','Salida','Estado','Total','Pago','Operador']];
-  getFilteredTickets().forEach(t=>{
-    const p=pm.get(t.id);
-    rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status==='open'?'En estacionamiento':'Salido',t.out?(p?.total||0):'',t.out?(p?.method||''):'',t.by||'']);
-  });
-  const ws=XLSX.utils.aoa_to_sheet(rows); XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
-
-  const lost=store.get('lostTickets',[]);
-  const rowsLost=[['TicketID','Patente','Fecha reimpresión','RUT dueño','Nombre dueño','RUT usuario','Nombre usuario','Operador']];
-  lost.forEach(x=> rowsLost.push([x.ticketId,x.plate,fmtDate(x.at),x.ownerRut,x.ownerName,x.userRut,x.userName,x.by]));
-  const ws2=XLSX.utils.aoa_to_sheet(rowsLost); XLSX.utils.book_append_sheet(wb, ws2, 'TicketsPerdidos');
-
-  // Totales del rango (cerrados)
-  const s=calcSummaryOnFiltered();
-  const ws3=XLSX.utils.aoa_to_sheet([['Resumen'],['Total ventas (rango)','$'+money(s.total)],['Vehículos salidos',s.count]]);
-  XLSX.utils.book_append_sheet(wb, ws3, 'Resumen');
-
-  XLSX.writeFile(wb, `reporte_${todayLocal()}.xlsx`);
-};
-
-/* Fin de día PDF (hoy) conservado */
-$('btnFinDiaPDF').onclick=()=> buildDailyPDF(todayLocal(), 'fin_dia');
-
-/* ===== Utilidades de Cierre X / Z (ambos archivos y totales) ===== */
+/* ===== Utilidades de Cierre X / Z ===== */
+function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); } // redefine por seguridad
 function buildDailyData(day){
   const map=store.get('tickets',{}), pays=store.get('payments',[]);
   const pm=new Map(pays.map(p=>[p.ticketId,p]));
@@ -757,7 +755,7 @@ function buildDailyPDF(day, prefix){
     doc.text(money(val),140,y,{align:'right'}); doc.text(p?.method||'',165,y); y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
   });
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
-  doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Autos: ${count}`,100,y);
+  doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Vehículos fuera: ${count}`,100,y);
 
   // Perdidos
   y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
@@ -776,10 +774,10 @@ function buildDailyXLSX(day, prefix){
   const wb=XLSX.utils.book_new();
   const {rows,total,count,lost,pm}=buildDailyData(day);
 
-  const sheetRows=[['ID','Patente','Ingreso','Salida','Monto','Medio','Operador']];
+  const sheetRows=[['ID','Patente','Ingreso','Salida','Monto','Medio','Operador','Estado']];
   rows.forEach(t=>{
     const p=pm.get(t.id);
-    sheetRows.push([t.id,t.plate,fmtDate(t.in),fmtDate(t.out),p?.total||0,p?.method||'',t.by||'']);
+    sheetRows.push([t.id,t.plate,fmtDate(t.in),fmtDate(t.out),p?.total||0,p?.method||'',t.by||'','Fuera del estacionamiento']);
   });
   const ws=XLSX.utils.aoa_to_sheet(sheetRows); XLSX.utils.book_append_sheet(wb, ws, 'Cierre');
 
@@ -787,13 +785,13 @@ function buildDailyXLSX(day, prefix){
   lost.forEach(x=> lostRows.push([x.ticketId,x.plate,fmtDate(x.at),x.ownerRut,x.ownerName,x.userRut,x.userName,x.by]));
   const ws2=XLSX.utils.aoa_to_sheet(lostRows); XLSX.utils.book_append_sheet(wb, ws2, 'TicketsPerdidos');
 
-  const ws3=XLSX.utils.aoa_to_sheet([['Resumen'],['Total ventas del día', total],['Vehículos salidos', count]]);
+  const ws3=XLSX.utils.aoa_to_sheet([['Resumen'],['Total ventas del día', total],['Vehículos fuera', count]]);
   XLSX.utils.book_append_sheet(wb, ws3, 'Resumen');
 
   XLSX.writeFile(wb, `${prefix}_${day}.xlsx`);
 }
 
-/* Botón Cierre X: NO bloquea, solo genera ambos archivos */
+/* Botón Cierre X (no bloquea) */
 $('btnCierreX').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`Cierre X (${day}): genera XLSX + PDF sin bloquear operaciones.\n¿Continuar?`)) return;
@@ -802,7 +800,7 @@ $('btnCierreX').onclick=()=>{
   alert('Cierre X generado (XLSX + PDF).');
 };
 
-/* Botón Cierre Z: BLOQUEA operaciones del día */
+/* Botón Cierre Z (bloquea día actual) */
 $('btnCierreZ').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`⚠️ Cierre Z (${day}): genera XLSX + PDF y BLOQUEA nuevas operaciones por el resto del día.\nNo podrás ingresar ni cobrar hasta el día siguiente.\n\n¿Confirmas Cierre Z?`)) return;
@@ -837,7 +835,7 @@ function renderSearch(){
       <td class="mono">${t.id}</td>
       <td class="mono">${t.plate}</td>
       <td class="mono">${fmtDate(t.in)}</td>
-      <td>${t.status==='open'?'En estacionamiento':'Salido'}</td>`;
+      <td>${t.status==='open'?'En estacionamiento':'Fuera del estacionamiento'}</td>`;
     tbody.appendChild(tr);
   });
 
@@ -879,16 +877,41 @@ function doLoginFlow(){
 $('doLogin').onclick=doLoginFlow;
 ['loginUser','loginPass'].forEach(id=> $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doLoginFlow(); } }));
 
+/* ========= Auto Cierre Z a las 00:00 si faltó (para AYER) ========= */
+function autoZIfNeeded(){
+  // ejecuta cada minuto; si cambia el día local y AYER no tuvo Z manual ni auto, genera auto Z (ayer)
+  const nowDay = todayLocal();
+  const yDay = yesterLocal();
+  const log = store.get('zAutoLog', {});
+  // si ya se registró auto Z de ayer, no repetir
+  if (log[yDay]) return;
+
+  // condición de medianoche: cuando el día actual es distinto al último check
+  // simplificado: si la hora local está dentro del primer minuto del día, intentamos auto-Z
+  const now = new Date().toLocaleTimeString('en-GB',{timeZone:TZ,hour12:false});
+  // "00:00" a "00:01"
+  if (now.startsWith('00:00') || now.startsWith('00:01')) {
+    // si ayer NO tuvo cierre Z manual (zClosedDate != ayer), generamos ambos archivos para AYER
+    if (store.get('zClosedDate','') !== yDay) {
+      try{
+        buildDailyXLSX(yDay,'cierre_z_auto');
+        buildDailyPDF(yDay,'cierre_z_auto');
+      }catch(e){ console.error('Auto Z fail',e); }
+    }
+    // marcar auto-Z de ayer (sea que hubiera o no manual, para no repetirse)
+    log[yDay] = true; store.set('zAutoLog', log);
+  }
+}
+// chequeo cada 30s para mayor robustez
+setInterval(autoZIfNeeded, 30000);
+
 /* ========= Init ========= */
 (function init(){
-  // DEMO: siempre mostrar login al abrir
+  // Login siempre
   clearSession(); updateHeader(); show('viewLogin'); defaultDates(); refreshZBanners();
 
-  // Si el zClosedDate es anterior a hoy, se libera automáticamente (no se borra el histórico, solo deja operar).
-  const z = getZClosedDate();
-  if(z && z!==todayLocal()) refreshZBanners();
+  // Diseño alt preferencia cargada arriba
 })();
-
 function defaultDates(){ const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; }
 </script>
 </body>
