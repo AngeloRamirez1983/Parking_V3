@@ -10,9 +10,11 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
 <style>
-:root{ --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;}
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
+:root{
+  --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9;
+  --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --badge:#0d1c32; --border:#123;
+}
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
 .container{max-width:1200px;margin:0 auto;padding:16px}
 header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 h1{margin:8px 0 0;font-size:20px}
@@ -30,22 +32,35 @@ button{cursor:pointer;font-weight:600}
 .btn-cancel{background:#7a1010;border-color:#5b0c0c}
 .hidden{display:none !important}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-.tag{display:inline-block;padding:6px 10px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:13px}
-.badge{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:13px}
+.tag{display:inline-block;padding:6px 10px;border-radius:9999px;background:var(--badge);border:1px solid var(--border);font-size:13px}
+.badge{display:inline-flex;gap:6px;align-items:center;padding:8px 14px;border-radius:14px;background:var(--badge);border:1px solid var(--border);font-size:15px;font-weight:700}
+.kpi{display:flex;gap:8px;align-items:center}
+.kpi b{font-size:16px}
+.kpi-large{font-size:18px;padding:10px 16px;border:2px solid #1e3a5f;border-radius:14px}
+.kpi-low{background:#3a1f10;border-color:#7a3a0a}
+.kpi-ok{background:#103a1a;border-color:#1c6b2a}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{border-bottom:1px solid #1f2e46;padding:8px;text-align:left}
 hr{border:0;border-top:1px solid #1f2e46}
 .muted{color:var(--muted)}
 .center{display:flex;align-items:center;justify-content:center}
 .right{display:flex;align-items:center;gap:12px}
-.kpi{display:flex;gap:8px;align-items:center}
-.kpi b{font-size:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.amount-box{background:#0d1c32;border:1px solid #234;border-radius:16px;padding:16px;text-align:center}
+.amount-box h1{margin:0;font-size:40px;letter-spacing:1px}
+.modal-backdrop{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:50}
+.modal{background:var(--card);border:1px solid #0b1f38;border-radius:16px;padding:16px;max-width:900px;width:95%}
+.modal h3{margin-top:4px}
+.modal .table{max-height:50vh;overflow:auto;display:block}
+.modal .table table{width:100%}
+.backbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 </style>
 
 <!-- libs -->
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
   if ('serviceWorker' in navigator) {
@@ -56,12 +71,15 @@ hr{border:0;border-top:1px solid #1f2e46}
 <body>
 <div class="container">
   <header>
-    <h1>Parking – Estacionamiento Rengo</h1>
-    <div class="right">
-      <span id="occupancyTag" class="badge">Disponibles: — / Capacidad: —</span>
+    <div class="toolbar">
+      <h1>Parking – Estacionamiento Rengo</h1>
+      <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
+    </div>
+    <div class="toolbar">
       <button class="btn" id="goEntrada">Entrada (Alt+E)</button>
       <button class="btn-warn" id="goSalida">Salida (Alt+S)</button>
       <button class="btn" id="goReportes">Reportes</button>
+      <button class="btn" id="btnBuscar">Buscar Vehículo</button>
       <button class="btn hidden" id="goAdmin">Admin</button>
       <button class="btn-ghost hidden" id="btnLogout">Cerrar sesión</button>
       <span id="who" class="muted"></span>
@@ -72,19 +90,15 @@ hr{border:0;border-top:1px solid #1f2e46}
   <section class="card" id="viewLogin">
     <h2>Acceso</h2>
     <div class="row">
-      <div><label>Usuario</label><input id="loginUser" placeholder="admin u operador" /></div>
-      <div><label>Clave</label><input id="loginPass" type="password" placeholder="*****" /></div>
+      <div><label>Usuario</label><input id="loginUser" placeholder="usuario" autocomplete="username" /></div>
+      <div><label>Clave</label><input id="loginPass" type="password" placeholder="*****" autocomplete="current-password" /></div>
       <div style="align-self:flex-end"><button id="doLogin" class="btn-ok">Entrar</button></div>
     </div>
-    <div class="muted" style="margin-top:6px">Admin: <span class="mono">admin / 12345</span> · Operador: <span class="mono">operador / 67890</span></div>
   </section>
 
   <!-- ENTRADA -->
   <section class="card hidden" id="viewEntrada">
-    <div class="row" style="align-items:center;justify-content:space-between">
-      <h2 style="flex:0 0 auto">Entrada</h2>
-      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnEntrada">—</b></div>
-    </div>
+    <div class="backbar"><button class="btn-ghost" id="backEntrada">← Atrás</button><h2>Entrada</h2><div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnEntrada">—</b></div></div>
     <div class="row">
       <div>
         <label>Patente</label>
@@ -92,7 +106,7 @@ hr{border:0;border-top:1px solid #1f2e46}
       </div>
       <div>
         <label>Saludo</label>
-        <input id="saludoIn" value="Bienvenido!" />
+        <input id="saludoIn" value="¡Bienvenido!" />
       </div>
       <div>
         <button id="btnGenerar" class="btn-ok">Generar ticket + PDF</button>
@@ -108,30 +122,27 @@ hr{border:0;border-top:1px solid #1f2e46}
 
   <!-- SALIDA -->
   <section class="card hidden" id="viewSalida">
-    <div class="row" style="align-items:center;justify-content:space-between">
-      <h2 style="flex:0 0 auto">Salida / Cobro</h2>
-      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnSalida">—</b></div>
-    </div>
-    <p class="muted">Lector QR USB: apunta el cursor al campo grande de abajo. La mayoría de lectores envía <b>Enter</b> al final → se cobra automático (efectivo por defecto).</p>
+    <div class="backbar"><button class="btn-ghost" id="backSalida">← Atrás</button><h2>Salida / Cobro</h2><div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnSalida">—</b></div></div>
+    <p class="muted">Lector QR USB: enfoque el campo grande, escanee; la mayoría agrega <b>Enter</b> al final.</p>
     <div class="row">
       <div style="flex:1 1 100%">
         <label>ID firmado (escanee o pegue y presione Enter)</label>
         <input id="scanInput" class="biginput" placeholder="id.firma" />
       </div>
     </div>
-    <div class="center" style="margin-top:8px">
-      <div id="salidaMsg" class="tag">Listo para escanear</div>
-    </div>
 
     <div id="chargeArea" class="card hidden" style="margin-top:12px">
       <h3>Detalle</h3>
-      <table class="table">
+      <div class="amount-box">
+        <div class="muted">Total a cobrar</div>
+        <h1 id="bigAmount">$0</h1>
+      </div>
+      <table class="table" style="margin-top:10px">
         <tbody>
           <tr><th>Patente</th><td id="chPlate" class="mono"></td></tr>
           <tr><th>Ingreso</th><td id="chIn" class="mono"></td></tr>
           <tr><th>Salida</th><td id="chOut" class="mono"></td></tr>
           <tr><th>Duración (min)</th><td id="chDur" class="mono"></td></tr>
-          <tr><th>Total ($)</th><td id="chTotal" class="mono"></td></tr>
           <tr><th>Tope diario</th><td id="chCap" class="mono"></td></tr>
         </tbody>
       </table>
@@ -140,11 +151,12 @@ hr{border:0;border-top:1px solid #1f2e46}
         <button class="btn" id="btnCobrarTx">Cobrar Transbank</button>
       </div>
     </div>
+    <div class="center" style="margin-top:8px"><div id="salidaMsg" class="tag">Listo para escanear</div></div>
   </section>
 
   <!-- REPORTES -->
   <section class="card hidden" id="viewReportes">
-    <h2>Reportes</h2>
+    <div class="backbar"><button class="btn-ghost" id="backReportes">← Atrás</button><h2>Reportes</h2></div>
     <div class="row">
       <div>
         <label>Estado</label>
@@ -158,18 +170,26 @@ hr{border:0;border-top:1px solid #1f2e46}
         <label>Buscar por patente</label>
         <input id="filterPlate" placeholder="AA-BB-11" class="upper" />
       </div>
+      <div>
+        <label>Desde</label>
+        <input type="date" id="filterFrom" />
+      </div>
+      <div>
+        <label>Hasta</label>
+        <input type="date" id="filterTo" />
+      </div>
       <div style="align-self:flex-end">
         <button class="btn" id="btnApplyFilter">Aplicar filtro</button>
       </div>
     </div>
     <div class="row" style="margin-top:6px">
-      <button class="btn" id="btnExportCSV">Exportar CSV</button>
+      <button class="btn" id="btnExportXLSX">Exportar XLSX</button>
       <button class="btn" id="btnFinDiaPDF">Fin de día (PDF)</button>
     </div>
     <table class="table" id="tblTickets">
       <thead>
         <tr>
-          <th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th><th>Pago</th>
+          <th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th><th>Pago</th><th>Operador</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -178,10 +198,7 @@ hr{border:0;border-top:1px solid #1f2e46}
 
   <!-- ADMIN -->
   <section class="card hidden" id="viewAdmin">
-    <div class="row" style="align-items:center;justify-content:space-between">
-      <h2 style="flex:0 0 auto">Administración</h2>
-      <div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnAdmin">—</b></div>
-    </div>
+    <div class="backbar"><button class="btn-ghost" id="backAdmin">← Atrás</button><h2>Administración</h2><span class="badge" id="freeOnAdmin">— / —</span></div>
     <div class="row">
       <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
       <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
@@ -192,35 +209,63 @@ hr{border:0;border-top:1px solid #1f2e46}
       <div><label>Capacidad total de espacios</label><input id="tCapacity" type="number" min="0" /></div>
       <div style="align-self:flex-end"><button id="btnSaveTariff" class="btn-ok">Guardar parámetros</button></div>
     </div>
-    <p class="muted">El total cobrado por un ticket en un mismo día no superará el <b>máximo diario</b>. Capacidad predeterminada: <b>50</b>.</p>
   </section>
+</div>
+
+<!-- MODAL BUSCAR VEHÍCULO / TICKET PERDIDO -->
+<div id="modalSearch" class="modal-backdrop">
+  <div class="modal">
+    <div class="backbar"><h3>Buscar Vehículo</h3><button class="btn-ghost" id="closeSearch">✕ Cerrar</button></div>
+    <div class="row">
+      <div><label>Patente</label><input id="searchPlate" class="upper" placeholder="AA-BB-11" /></div>
+      <div>
+        <label>Estado</label>
+        <select id="searchStatus">
+          <option value="todos">Todos</option>
+          <option value="open">En estacionamiento</option>
+          <option value="closed">Salido</option>
+        </select>
+      </div>
+      <div style="align-self:flex-end"><button class="btn" id="btnSearchGo">Buscar</button></div>
+    </div>
+    <div class="table" style="margin-top:10px">
+      <table>
+        <thead><tr><th>ID</th><th>Patente</th><th>Ingreso</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="searchBody"></tbody>
+      </table>
+    </div>
+
+    <hr/>
+    <h3>Ticket perdido / Reimpresión</h3>
+    <div class="row">
+      <div><label>RUT dueño</label><input id="lostOwnerRut" placeholder="12.345.678-9" /></div>
+      <div><label>Nombre dueño</label><input id="lostOwnerName" placeholder="Nombre del dueño" /></div>
+      <div><label>RUT usuario</label><input id="lostUserRut" placeholder="12.345.678-9" /></div>
+      <div><label>Nombre usuario</label><input id="lostUserName" placeholder="Nombre del usuario" /></div>
+      <div style="align-self:flex-end"><button class="btn-warn" id="btnReprintLost" disabled>Reimprimir ticket perdido</button></div>
+    </div>
+    <div class="muted" style="margin-top:8px">* Se registrará en reportes y fin de día.</div>
+  </div>
 </div>
 
 <script>
 /* ========= Config ========= */
 const TZ='America/Santiago';
-const AUTO_CHARGE=true;           // cobra al apretar Enter en Salida
-const DEFAULT_METHOD='efectivo';  // método por defecto
+const AUTO_CHARGE=false;           // ahora NO autocobra
+const DEFAULT_METHOD='efectivo';
+const INACTIVITY_MIN=60;           // auto-logout tras 60 min sin uso
+const ADMIN_MASTER='CAMBIA-ESTA-CLAVE-MAESTRA'; // <--- CAMBIAR en producción!
 
 /* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
 const fmtDate = (iso)=> new Date(iso).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
 const nowISO = ()=> new Date().toISOString();
-const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); // YYYY-MM-DD
+const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ});
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
-
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
-function signId(id){
-  const sig = CryptoJS.HmacSHA256(id, SECRET).toString(CryptoJS.enc.Hex).slice(0,16);
-  return `${id}.${sig}`;
-}
-function verifySigned(signed){
-  const [id, sig] = (signed||'').split('.');
-  if(!id||!sig) return null;
-  const exp = CryptoJS.HmacSHA256(id, SECRET).toString(CryptoJS.enc.Hex).slice(0,16);
-  return sig===exp ? id : null;
-}
+function signId(id){ const sig=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return `${id}.${sig}`;}
+function verifySigned(signed){ const [id,sig]=(signed||'').split('.'); if(!id||!sig)return null; const exp=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return sig===exp? id:null; }
 
 /* ========= Storage ========= */
 const store={
@@ -228,9 +273,9 @@ const store={
   set(k,v){ localStorage.setItem(k, JSON.stringify(v)); },
   del(k){ localStorage.removeItem(k); }
 };
-// estructuras
 if(!store.get('tickets')) store.set('tickets',{});      // id -> ticket
 if(!store.get('payments')) store.set('payments',[]);    // pagos
+if(!store.get('lostTickets')) store.set('lostTickets',[]); // reimpresiones por pérdida
 if(!store.get('users')) store.set('users',[
   {user:'admin', pass:'12345', role:'admin'},
   {user:'operador', pass:'67890', role:'operador'}
@@ -238,17 +283,25 @@ if(!store.get('users')) store.set('users',[
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 if(store.get('capacity')==null) store.set('capacity', 50);
 
-/* ========= Sesión / Login ========= */
-const session = { user:null, role:null };
-function saveSession(){ store.set('session', {user:session.user, role:session.role}); }
+/* ========= Sesión / Login + Inactividad ========= */
+const session = { user:null, role:null }; let inactivityTimer=null;
+function saveSession(){ store.set('session', {user:session.user, role:session.role, at:nowISO()}); }
 function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
-function clearSession(){ store.del('session'); session.user=null; session.role=null; }
+function clearSession(){ store.del('session'); session.user=null; session.role=null; stopIdleTimer(); }
+function startIdleTimer(){
+  stopIdleTimer();
+  inactivityTimer=setTimeout(()=>{ alert('Sesión cerrada por inactividad'); logout(); }, INACTIVITY_MIN*60*1000);
+}
+function stopIdleTimer(){ if(inactivityTimer){ clearTimeout(inactivityTimer); inactivityTimer=null; } }
+['click','keydown','mousemove','wheel','touchstart'].forEach(ev=> addEventListener(ev, startIdleTimer, {passive:true}));
 
 function login(u,p){
-  const user = store.get('users',[]).find(x=>x.user===u && x.pass===p);
+  const users=store.get('users',[]);
+  const user = users.find(x=>x.user===u && (x.pass===p || (u==='admin' && p===ADMIN_MASTER)));
   if(!user) return false;
-  session.user=user.user; session.role=user.role; saveSession(); return true;
+  session.user=user.user; session.role=user.role; saveSession(); startIdleTimer(); return true;
 }
+function logout(){ clearSession(); updateHeader(); show('viewLogin'); }
 
 function updateHeader(){
   const logged = !!session.user;
@@ -258,326 +311,284 @@ function updateHeader(){
   updateOccupancyUI();
 }
 
-$('doLogin').onclick = ()=>{
-  const u=$('loginUser').value.trim(), p=$('loginPass').value.trim();
-  if(!login(u,p)){ alert('Credenciales inválidas'); return; }
-  updateHeader(); show('viewEntrada'); $('patenteIn').focus();
-};
-$('btnLogout').onclick = ()=>{
-  clearSession(); show('viewLogin'); updateHeader();
-};
-['loginUser','loginPass'].forEach(id=>{
-  $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('doLogin').click(); } });
-});
-
-/* ========= Navegación y atajos ========= */
+/* ========= Navegación ========= */
 const VIEWS=['viewLogin','viewEntrada','viewSalida','viewReportes','viewAdmin'];
-function show(id){ VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden'); updateOccupancyUI(); if(id==='viewSalida') $('scanInput').focus();}
-$('goEntrada').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); };
-$('goSalida').onclick =()=>{ if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); };
-$('goReportes').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} applyFilter(); show('viewReportes'); };
-$('goAdmin').onclick=()=>{ if(!(session.user && session.role==='admin')){ show('viewLogin'); return;} loadAdminUI(); show('viewAdmin'); };
+const navStack=[];
+function show(id){
+  VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden');
+  updateOccupancyUI();
+  if(id==='viewSalida') $('scanInput').focus();
+}
+function pushView(id){ const current=VIEWS.find(v=> !$(v).classList.contains('hidden')); if(current) navStack.push(current); show(id); }
+function back(){ const prev=navStack.pop(); if(prev) show(prev); }
 
+$('goEntrada').onclick=()=>{ if(!session.user) return show('viewLogin'); pushView('viewEntrada'); $('patenteIn').focus(); };
+$('goSalida').onclick =()=>{ if(!session.user) return show('viewLogin'); pushView('viewSalida'); $('scanInput').focus(); };
+$('goReportes').onclick=()=>{ if(!session.user) return show('viewLogin'); applyFilter(); pushView('viewReportes'); };
+$('goAdmin').onclick=()=>{ if(!(session.user && session.role==='admin')) return show('viewLogin'); loadAdminUI(); pushView('viewAdmin'); };
+$('btnLogout').onclick = logout;
+
+$('backEntrada').onclick=back; $('backSalida').onclick=back; $('backReportes').onclick=back; $('backAdmin').onclick=back;
 window.addEventListener('keydown',(e)=>{
-  if(e.altKey && (e.key==='e'||e.key==='E')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); }
-  if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); }
+  if(e.altKey && (e.key==='e'||e.key==='E')){ e.preventDefault(); if(!session.user) return show('viewLogin'); pushView('viewEntrada'); $('patenteIn').focus(); }
+  if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); if(!session.user) return show('viewLogin'); pushView('viewSalida'); $('scanInput').focus(); }
 });
 
 /* ========= Ocupación ========= */
 function getCapacity(){ return Number(store.get('capacity',50))||0; }
 function setCapacity(v){ store.set('capacity', Number(v)||0); }
-function countOpenTickets(){
-  const map=store.get('tickets',{}); let open=0;
-  Object.values(map).forEach(t=>{ if(t.status==='open') open++; });
-  return open;
-}
+function countOpenTickets(){ const map=store.get('tickets',{}); let open=0; Object.values(map).forEach(t=>{ if(t.status==='open') open++; }); return open; }
 function updateOccupancyUI(){
-  const cap = getCapacity();
-  const open = countOpenTickets();
-  const free = Math.max(0, cap - open);
-  const text = `Disponibles: ${free} / Capacidad: ${cap}`;
-  $('occupancyTag').textContent = text;
-  const targets=['freeOnEntrada','freeOnSalida','freeOnAdmin'];
-  targets.forEach(id=>{ const el=$(id); if(el) el.textContent = `${free} / ${cap}`; });
+  const cap=getCapacity(), open=countOpenTickets(), free=Math.max(0, cap-open);
+  const tag=$('occupancyTag'); tag.textContent=`Disponibles: ${free} / Capacidad: ${cap}`;
+  tag.classList.remove('kpi-low','kpi-ok'); tag.classList.add(free<=5 ? 'kpi-low':'kpi-ok');
+  ['freeOnEntrada','freeOnSalida','freeOnAdmin'].forEach(id=>{ const el=$(id); if(el) el.textContent=`${free} / ${cap}`; });
 }
 
-/* ========= Tarifa + Cálculo (con tope diario) ========= */
+/* ========= Tarifa + Cálculo (tope diario) ========= */
 function getTariff(){ return store.get('tariff',{ firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 }); }
 function setTariff(t){ store.set('tariff', t); }
 function calcCharge(inISO, outISO){
-  const t = getTariff();
-  const mins = Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
-  let total;
-  if(mins<=t.firstMinutes) total = t.firstPrice;
-  else total = t.firstPrice + (mins - t.firstMinutes) * t.perMin;
-  total = Math.min(total, t.dailyCap||Infinity); // tope diario
-  return {mins, total, cap:t.dailyCap||Infinity};
+  const t=getTariff(); const mins=Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
+  let total= mins<=t.firstMinutes ? t.firstPrice : t.firstPrice + (mins - t.firstMinutes)*t.perMin;
+  total=Math.min(total, t.dailyCap||Infinity);
+  return {mins,total,cap:t.dailyCap||Infinity};
 }
 
 /* ========= Admin UI ========= */
 function loadAdminUI(){
-  const t=getTariff();
-  $('tFirstMin').value = t.firstMinutes;
-  $('tFirstPrice').value = t.firstPrice;
-  $('tPerMin').value = t.perMin;
-  $('tDailyCap').value = t.dailyCap;
-  $('tCapacity').value = getCapacity();
+  const t=getTariff(); $('tFirstMin').value=t.firstMinutes; $('tFirstPrice').value=t.firstPrice;
+  $('tPerMin').value=t.perMin; $('tDailyCap').value=t.dailyCap; $('tCapacity').value=getCapacity();
 }
-$('btnSaveTariff').onclick = ()=>{
-  if(!(session.user && session.role==='admin')){ alert('Solo admin'); return; }
+$('btnSaveTariff').onclick=()=>{
+  if(!(session.user && session.role==='admin')) return alert('Solo admin');
   const t={
     firstMinutes: Math.max(0, parseInt($('tFirstMin').value||'0',10)),
     firstPrice:   Math.max(0, parseInt($('tFirstPrice').value||'0',10)),
     perMin:       Math.max(0, parseInt($('tPerMin').value||'0',10)),
     dailyCap:     Math.max(0, parseInt($('tDailyCap').value||'0',10))
   };
-  const cap = Math.max(0, parseInt($('tCapacity').value||'0',10));
-  setTariff(t); setCapacity(cap);
-  updateOccupancyUI();
-  alert('Parámetros guardados.');
+  const cap=Math.max(0, parseInt($('tCapacity').value||'0',10));
+  setTariff(t); setCapacity(cap); updateOccupancyUI(); alert('Parámetros guardados.');
 };
 
-/* ========= Entrada: generar ticket + PDF (45x250 con QR JPEG) ========= */
-$('patenteIn').addEventListener('input', (e)=>{
-  const pos=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(pos,pos);
-});
-function renderQRPreview(text){
-  const el=$('qrPreview'); el.innerHTML='';
-  new QRCode(el, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-}
-/* QR como JPEG para máxima compatibilidad */
+/* ========= Entrada: generar ticket + PDF (45x250 con QR JPEG 35mm) ========= */
+$('patenteIn').addEventListener('input',(e)=>{ const pos=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(pos,pos); });
+function renderQRPreview(text){ const el=$('qrPreview'); el.innerHTML=''; new QRCode(el,{text, width:180, height:180, correctLevel:QRCode.CorrectLevel.M}); }
+/* QR como JPEG para compatibilidad */
 function buildQRDataURL(text){
-  const tmp = document.createElement('div');
-  new QRCode(tmp, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-  const imgOrCanvas = tmp.querySelector('canvas') || tmp.querySelector('img');
-  const canvas = document.createElement('canvas'); canvas.width=180; canvas.height=180;
-  const ctx = canvas.getContext('2d');
-  if (imgOrCanvas) {
-    try { ctx.drawImage(imgOrCanvas, 0, 0); } catch(_) {}
-  } else {
-    ctx.fillStyle='#fff'; ctx.fillRect(0,0,180,180);
-  }
-  return canvas.toDataURL('image/jpeg', 0.95);
+  const tmp=document.createElement('div'); new QRCode(tmp,{text,width:180,height:180,correctLevel:QRCode.CorrectLevel.M});
+  const imgOrCanvas=tmp.querySelector('canvas')||tmp.querySelector('img');
+  const canvas=document.createElement('canvas'); canvas.width=180; canvas.height=180; const ctx=canvas.getContext('2d');
+  if(imgOrCanvas){ try{ ctx.drawImage(imgOrCanvas,0,0);}catch(_){}} else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,180,180); }
+  return canvas.toDataURL('image/jpeg',0.95);
 }
 function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.set('tickets',map); }
 function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
-function setTicket(id, t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
+function setTicket(id,t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
 function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
-  const { jsPDF } = window.jspdf;
-  const W = 45, H = 250, M=3;                // mm
-  const doc = new jsPDF({ unit:'mm', format:[W,H], orientation:'portrait' });
-
-  let y = 8, cx=W/2, inner=W-M*2;
-
-  // Título con auto-wrap
+  const { jsPDF }=window.jspdf; const W=45,H=250,M=3; const doc=new jsPDF({unit:'mm',format:[W,H],orientation:'portrait'});
+  let y=8, cx=W/2, inner=W-M*2;
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  const title = 'Bienvenido a Estacionamiento Rengo';
-  doc.splitTextToSize(title, inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
-
-  // Saludo con auto-wrap
+  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=5; });
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  const hello = (welcome||'Bienvenido!');
-  doc.splitTextToSize(hello, inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
-  y += 2;
-
-  // Patente
-  doc.setFont('helvetica','bold'); doc.setFontSize(15);
-  doc.text(plate, cx, y, {align:'center'}); y += 8;
-
-  // Hora ingreso
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.text('Ingreso:', M, y);
-  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
-  doc.text(inStr, W - M, y, {align:'right'}); y += 5;
-
-  // Separador
-  doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
-
-  // Mensaje recordatorio
+  doc.splitTextToSize((welcome||'¡Bienvenido!'), inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=5; }); y+=2;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.text(plate,cx,y,{align:'center'}); y+=8;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Ingreso:',M,y);
+  const inStr = new Date(inISO).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
+  doc.splitTextToSize(inStr, inner/1.1).forEach((line,i)=>{ doc.text(line,W-M,y+i*4,{align:'right'}); }); y+=5;
+  doc.setDrawColor(120); doc.line(M,y,W-M,y); y+=4;
   doc.setFontSize(8);
-  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 4; });
-  y += 1;
-
-  // ID con wrap
-  doc.setFontSize(8);
-  doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += 4; });
-  y += 2;
-
-  // QR centrado (JPEG)
-  if (qrDataURL) {
-    const QRW = 32, QRH = 32, x = (W - QRW) / 2;
-    doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
-    y += QRH + 6;
-  }
-
-  // Pie
-  doc.setFontSize(8);
-  doc.text('¡Conserve este ticket!', cx, y, {align:'center'}); y += 4;
-
-  // Imprimir / Guardar
-  const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-  const w = window.open(url);
-  if (w) { w.onload = () => { try { w.focus(); w.print(); } catch(_) {} }; }
-  else { doc.save(`ticket_${plate}.pdf`); }
+  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line=>{ doc.text(line,cx,y,{align:'center'}); y+=4; }); y+=1;
+  doc.setFontSize(8); doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line=>{ doc.text(line,M,y); y+=4; }); y+=2;
+  if(qrDataURL){ const QRW=35,QRH=35,x=(W-QRW)/2; doc.addImage(qrDataURL,'JPEG',x,y,QRW,QRH); y+=QRH+6; }
+  doc.setFontSize(7); doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'}); y+=4;
+  const blob=doc.output('blob'); const url=URL.createObjectURL(blob); const w=window.open(url); if(w){ w.onload=()=>{ try{w.focus(); w.print();}catch(_){}} } else { doc.save(`ticket_${plate}.pdf`);}
 }
 
-$('btnGenerar').onclick = () => {
-  if(!session.user){ show('viewLogin'); return; }
-  const plate = $('patenteIn').value.trim().toUpperCase();
-  const welcome = $('saludoIn').value.trim() || 'Bienvenido!';
+$('btnGenerar').onclick=()=>{
+  if(!session.user) return show('viewLogin');
+  const plate=$('patenteIn').value.trim().toUpperCase(); const welcome=$('saludoIn').value.trim()||'¡Bienvenido!';
   if(!plate){ alert('Ingresa la patente'); $('patenteIn').focus(); return; }
-
-  const id = genId();
-  const signed = signId(id);
-  const inISO = nowISO();
-
-  const t = { id, signed, plate, in: inISO, out: null, status:'open', by:session.user };
-  saveTicket(t);
-
-  renderQRPreview(signed); $('idPreview').textContent = signed;
-
-  const qrDataURL = buildQRDataURL(signed);
-  printTicketPDF({ plate, inISO, signed, qrDataURL, welcome });
-
-  $('patenteIn').value=''; $('patenteIn').focus();
-  updateOccupancyUI(); // –1 disponible (se recalcula por abiertos)
+  const id=genId(), signed=signId(id), inISO=nowISO();
+  const t={id,signed,plate,in:inISO,out:null,status:'open',by:session.user}; saveTicket(t);
+  renderQRPreview(signed); $('idPreview').textContent=signed;
+  const qrDataURL=buildQRDataURL(signed); printTicketPDF({plate,inISO,signed,qrDataURL,welcome});
+  $('patenteIn').value=''; $('patenteIn').focus(); updateOccupancyUI();
 };
 
-/* ========= Salida / Cobro (lector USB) ========= */
-function handleSigned(raw, auto=true){
-  if(!session.user){ show('viewLogin'); return; }
-  const id = verifySigned(raw);
-  if(!id){ $('salidaMsg').textContent='QR/ID inválido'; $('salidaMsg').style.background='#3a1111'; return; }
-  const t = getTicket(id);
-  if(!t){ $('salidaMsg').textContent='Ticket no encontrado'; $('salidaMsg').style.background='#3a1111'; return; }
-  if(t.status==='closed'){ $('salidaMsg').textContent='Ticket ya cerrado'; $('salidaMsg').style.background='#3a1111'; return; }
-
-  const outISO = nowISO();
-  const { mins, total, cap } = calcCharge(t.in, outISO);
-
-  $('chPlate').textContent = t.plate;
-  $('chIn').textContent    = fmtDate(t.in);
-  $('chOut').textContent   = fmtDate(outISO);
-  $('chDur').textContent   = String(mins);
-  $('chTotal').textContent = money(total);
-  $('chCap').textContent   = money(cap);
-
-  $('chargeArea').classList.remove('hidden');
-  $('chargeArea').dataset.id = id;
-  $('chargeArea').dataset.total = total;
-
-  $('salidaMsg').textContent='Listo para cobrar';
-  $('salidaMsg').style.background='#0d1c32';
-
-  if(auto && AUTO_CHARGE){
-    doCharge(DEFAULT_METHOD);
-  }
+/* ========= Salida / Cobro ========= */
+function handleSigned(raw){
+  if(!session.user) return show('viewLogin');
+  const id=verifySigned(raw); if(!id){ setMsg('QR/ID inválido',true); return; }
+  const t=getTicket(id); if(!t){ setMsg('Ticket no encontrado',true); return; }
+  if(t.status==='closed'){ setMsg('Ticket ya cerrado',true); return; }
+  const outISO=nowISO(); const {mins,total,cap}=calcCharge(t.in,outISO);
+  $('chPlate').textContent=t.plate; $('chIn').textContent=fmtDate(t.in); $('chOut').textContent=fmtDate(outISO);
+  $('chDur').textContent=String(mins); $('chCap').textContent=money(cap); $('bigAmount').textContent='$'+money(total);
+  $('chargeArea').classList.remove('hidden'); $('chargeArea').dataset.id=id; $('chargeArea').dataset.total=total;
+  setMsg('Listo para cobrar');
 }
-$('scanInput').addEventListener('keydown',(e)=>{
-  if(e.key==='Enter'){
-    e.preventDefault();
-    const raw = $('scanInput').value.trim();
-    if(!raw) return;
-    handleSigned(raw, true);
-    $('scanInput').select();
-  }
-});
+function setMsg(text,isErr=false){ const el=$('salidaMsg'); el.textContent=text; el.style.background=isErr?'#3a1111':'#0d1c32'; }
+$('scanInput').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=$('scanInput').value.trim(); if(!raw) return; handleSigned(raw); $('scanInput').select(); } });
+
+function confirmCharge(total,method){
+  return confirm(`Confirma cobro de $${money(total)} por ${method}?`);
+}
 function doCharge(method){
-  const id = $('chargeArea').dataset.id;
-  const total = Number($('chargeArea').dataset.total||0);
-  const t = getTicket(id);
-  if(!t){ alert('Ticket no encontrado'); return; }
-  t.out = nowISO(); t.status='closed'; t.payMethod = method;
-  setTicket(id,t); savePayment(id,total,method);
-  $('chargeArea').classList.add('hidden');
-  $('salidaMsg').textContent = `Cobrado ${money(total)} (${method})`;
-  $('salidaMsg').style.background = '#0d1c32';
-  applyFilter();         // refresca reportes si están abiertos
-  updateOccupancyUI();   // +1 disponible (se recalcula por abiertos)
+  const id=$('chargeArea').dataset.id; const total=Number($('chargeArea').dataset.total||0); const t=getTicket(id);
+  if(!t) return alert('Ticket no encontrado');
+  if(!confirmCharge(total,method)) return;
+  t.out=nowISO(); t.status='closed'; t.payMethod=method; setTicket(id,t); savePayment(id,total,method);
+  $('chargeArea').classList.add('hidden'); setMsg(`Cobrado $${money(total)} (${method})`);
+  applyFilter(); updateOccupancyUI();
 }
-$('btnCobrarEfe').onclick=()=> doCharge('efectivo');
-$('btnCobrarTx').onclick =()=> doCharge('transbank');
+$('btnCobrarEfe').onclick=()=> doCharge('efectivo'); $('btnCobrarTx').onclick=()=> doCharge('transbank');
 
-/* ========= Reportes + Filtro ========= */
+/* ========= Reportes + Filtros ========= */
+function defaultDates(){ const d=todayLocal(); $('filterFrom').value=d; $('filterTo').value=d; }
+function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); }
+function inRange(t){ const f=$('filterFrom').value||'0000-01-01', to=$('filterTo').value||'9999-12-31'; const day=ticketDateLocalDay(t.in); return (day>=f && day<=to); }
 function getFilteredTickets(){
-  const map = store.get('tickets',{});
-  const all = Object.values(map);
-  const status = $('filterStatus').value; // todos/abiertos/cerrados
-  const plateQ = $('filterPlate').value.trim().toUpperCase();
+  const map=store.get('tickets',{}), all=Object.values(map);
+  const status=$('filterStatus').value, plateQ=($('filterPlate').value||'').trim().toUpperCase();
   return all.filter(t=>{
-    if(status==='abiertos'  && t.status!=='open')    return false;
-    if(status==='cerrados'  && t.status!=='closed')  return false;
+    if(!inRange(t)) return false;
+    if(status==='abiertos' && t.status!=='open') return false;
+    if(status==='cerrados' && t.status!=='closed') return false;
     if(plateQ && !t.plate.toUpperCase().includes(plateQ)) return false;
     return true;
-  }).sort((a,b)=> (a.in<b.in?1:-1));
+  }).sort((a,b)=>(a.in<b.in?1:-1));
 }
 function fillTable(){
-  const tbody = $('tblTickets').querySelector('tbody'); tbody.innerHTML='';
-  const pays = store.get('payments',[]);
-  const pm = new Map(pays.map(p=>[p.ticketId,p]));
-  const rows = getFilteredTickets();
-  for(const t of rows){
-    const pay = pm.get(t.id);
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
+  const tbody=$('tblTickets').querySelector('tbody'); tbody.innerHTML='';
+  const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
+  getFilteredTickets().forEach(t=>{
+    const p=pm.get(t.id); const tr=document.createElement('tr');
+    tr.innerHTML=`
       <td class="mono">${t.id}</td>
       <td class="mono">${t.plate}</td>
       <td class="mono">${fmtDate(t.in)}</td>
       <td class="mono">${t.out?fmtDate(t.out):'-'}</td>
       <td>${t.status==='open'?'En estacionamiento':'Salido'}</td>
-      <td class="mono">${t.out? money(pay?.total||0): '-'}</td>
-      <td>${t.out? (pay?.method||'-') : '-'}</td>`;
+      <td class="mono">${t.out? money(p?.total||0): '-'}</td>
+      <td>${t.out? (p?.method||'-') : '-'}</td>
+      <td>${t.by||''}</td>`;
     tbody.appendChild(tr);
-  }
+  });
 }
 function applyFilter(){ fillTable(); }
-$('btnApplyFilter').onclick = applyFilter;
-$('filterPlate').addEventListener('input', ()=>{ // mayúsculas
-  const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos);
-});
+$('btnApplyFilter').onclick=applyFilter;
+$('filterPlate').addEventListener('input',()=>{ const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
-/* Exportes */
-$('btnExportCSV').onclick = ()=>{
-  const rows=[['ID','Patente','Ingreso','Salida','Estado','Total','Pago']];
+/* Export XLSX */
+$('btnExportXLSX').onclick=()=>{
+  const wb=XLSX.utils.book_new();
   const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  for(const t of getFilteredTickets()){
+  const rows=[['ID','Patente','Ingreso','Salida','Estado','Total','Pago','Operador']];
+  getFilteredTickets().forEach(t=>{
     const p=pm.get(t.id);
-    rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status==='open'?'En estacionamiento':'Salido',t.out?(p?.total||0):'',t.out?(p?.method||''):'']);
-  }
-  const csv = rows.map(r=> r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=`tickets_${todayLocal()}.csv`; a.click();
+    rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status==='open'?'En estacionamiento':'Salido',t.out?(p?.total||0):'',t.out?(p?.method||''):'',t.by||'']);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows); XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+
+  const lost=store.get('lostTickets',[]);
+  const rowsLost=[['TicketID','Patente','Fecha reimpresión','RUT dueño','Nombre dueño','RUT usuario','Nombre usuario','Operador']];
+  lost.forEach(x=> rowsLost.push([x.ticketId,x.plate,fmtDate(x.at),x.ownerRut,x.ownerName,x.userRut,x.userName,x.by]));
+  const ws2=XLSX.utils.aoa_to_sheet(rowsLost); XLSX.utils.book_append_sheet(wb, ws2, 'TicketsPerdidos');
+
+  XLSX.writeFile(wb, `reporte_${todayLocal()}.xlsx`);
 };
-$('btnFinDiaPDF').onclick = ()=>{
-  const day = todayLocal();
-  const { jsPDF } = window.jspdf; const doc = new jsPDF({orientation:'landscape'});
-  doc.setFontSize(14); doc.text(`Fin de día – ${day}`, 14, 18);
+
+/* Fin de día PDF */
+$('btnFinDiaPDF').onclick=()=>{
+  const day=todayLocal(); const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'landscape'});
+  doc.setFontSize(14); doc.text(`Fin de día – ${day}`,14,18);
   doc.setFontSize(10); doc.text(`Generado: ${new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false})}`,14,25);
   let y=34; doc.setFontSize(9);
-  const map=store.get('tickets',{}); const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  const rows = Object.values(map).filter(t=> new Date(t.in).toLocaleDateString('en-CA',{timeZone:TZ})===day && t.status==='closed');
-  doc.text('Patente',14,y); doc.text('Ingreso',40,y); doc.text('Salida',90,y); doc.text('Monto',140,y); doc.text('Medio',165,y);
-  y+=4; doc.line(14,y,200,y); y+=6;
-  let total=0;
-  rows.forEach(r=>{
-    const pay=pm.get(r.id); const val=pay?.total||0; total+=val;
+  const map=store.get('tickets',{}), pays=store.get('payments',[]), pm=new Map(pays.map(p=>[p.ticketId,p]));
+  const rows=Object.values(map).filter(t=> ticketDateLocalDay(t.in)===day && t.status==='closed');
+  doc.text('Patente',14,y); doc.text('Ingreso',40,y); doc.text('Salida',90,y); doc.text('Monto',140,y); doc.text('Medio',165,y); y+=4; doc.line(14,y,200,y); y+=6;
+  let total=0; rows.forEach(r=>{ const p=pm.get(r.id); const val=p?.total||0; total+=val;
     doc.text(r.plate,14,y); doc.text(fmtDate(r.in),40,y); doc.text(fmtDate(r.out),90,y);
-    doc.text(money(val),140,y,{align:'right'}); doc.text(pay?.method||'',165,y);
-    y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
+    doc.text(money(val),140,y,{align:'right'}); doc.text(p?.method||'',165,y); y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
   });
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
-  doc.text(`Total ventas: $ ${money(total)}`,14,y);
-  doc.text(`Autos: ${rows.length}`,100,y);
+  doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Autos: ${rows.length}`,100,y);
+  // Sección tickets perdidos
+  const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
+  y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
+  doc.text('Patente',14,y); doc.text('Dueño',45,y); doc.text('Usuario',110,y); doc.text('Fecha',165,y); y+=4; doc.line(14,y,200,y); y+=6;
+  lost.forEach(x=>{
+    doc.text(x.plate||'',14,y);
+    doc.text(`${x.ownerRut||''} – ${x.ownerName||''}`,45,y);
+    doc.text(`${x.userRut||''} – ${x.userName||''}`,110,y);
+    doc.text(fmtDate(x.at),165,y);
+    y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
+  });
   doc.save(`fin_dia_${day}.pdf`);
 };
 
-/* ========= inicio ========= */
+/* ========= Modal Buscar Vehículo / Ticket perdido ========= */
+const modal=$('modalSearch');
+function openSearch(){ modal.style.display='flex'; renderSearch(); }
+function closeSearch(){ modal.style.display='none'; selectedForReprint=null; $('btnReprintLost').disabled=true; resetLostForm(); }
+$('btnBuscar').onclick=()=>{ if(!session.user) return show('viewLogin'); openSearch(); };
+$('closeSearch').onclick=closeSearch; $('btnSearchGo').onclick=renderSearch;
+$('searchPlate').addEventListener('input',()=>{ const el=$('searchPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
+
+let selectedForReprint=null;
+function renderSearch(){
+  const tbody=$('searchBody'); tbody.innerHTML='';
+  const plateQ=($('searchPlate').value||'').trim().toUpperCase(); const st=$('searchStatus').value;
+  const map=store.get('tickets',{}); const rows=Object.values(map).filter(t=>{
+    if(st!=='todos' && t.status!==st) return false;
+    if(plateQ && !t.plate.toUpperCase().includes(plateQ)) return false;
+    return true;
+  }).sort((a,b)=>(a.in<b.in?1:-1));
+  rows.forEach(t=>{
+    const tr=document.createElement('tr');
+    const btn=`<button class="btn-warn" data-id="${t.id}">Ticket perdido / Reimprimir</button>`;
+    tr.innerHTML=`<td class="mono">${t.id}</td><td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td>${t.status==='open'?'En estacionamiento':'Salido'}</td><td>${btn}</td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('button[data-id]').forEach(b=> b.onclick=()=>{ selectedForReprint=b.dataset.id; $('btnReprintLost').disabled=false; });
+}
+function resetLostForm(){ $('lostOwnerRut').value=''; $('lostOwnerName').value=''; $('lostUserRut').value=''; $('lostUserName').value=''; }
+function validRutLike(s){ return !!(s && s.length>=8); } // validación básica
+$('btnReprintLost').onclick=()=>{
+  if(!selectedForReprint) return;
+  const t=getTicket(selectedForReprint); if(!t) return alert('Ticket no encontrado');
+  const ownerRut=$('lostOwnerRut').value.trim(), ownerName=$('lostOwnerName').value.trim();
+  const userRut=$('lostUserRut').value.trim(), userName=$('lostUserName').value.trim();
+  if(!validRutLike(ownerRut)||!ownerName||!validRutLike(userRut)||!userName){ return alert('Completa RUTs y nombres.'); }
+
+  // Registrar en lostTickets
+  const lost=store.get('lostTickets',[]);
+  lost.push({ ticketId:t.id, plate:t.plate, ownerRut, ownerName, userRut, userName, at:nowISO(), by:session.user });
+  store.set('lostTickets',lost);
+
+  // Reimprimir ticket original
+  const qrDataURL=buildQRDataURL(t.signed);
+  printTicketPDF({ plate:t.plate, inISO:t.in, signed:t.signed, qrDataURL, welcome:'Reimpresión por ticket perdido' });
+  alert('Reimpresión registrada.'); resetLostForm();
+};
+
+/* ========= Inicio ========= */
+function doLoginFlow(){
+  const u=$('loginUser').value.trim(), p=$('loginPass').value.trim();
+  if(!login(u,p)){ alert('Credenciales inválidas'); return; }
+  updateHeader(); navStack.length=0; show('viewEntrada'); $('patenteIn').focus();
+}
+$('doLogin').onclick=doLoginFlow;
+['loginUser','loginPass'].forEach(id=> $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doLoginFlow(); } }));
+
 (function init(){
-  if(loadSession()){ updateHeader(); show('viewEntrada'); $('patenteIn').focus(); }
-  else{ updateHeader(); show('viewLogin'); }
+  if(loadSession()){ updateHeader(); show('viewEntrada'); $('patenteIn').focus(); startIdleTimer(); }
+  else{ updateHeader(); show('viewLogin'); defaultDates(); }
+  defaultDates();
 })();
 </script>
 </body>
