@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Parking – Estacionamiento Rengo</title>
+<title>Parking – Espacio Quintalba - Rengo</title>
 
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0ea5e9" />
@@ -93,7 +93,7 @@ body.alt input, body.alt select{border-radius:8px}
 <div class="container">
   <header>
     <div class="toolbar">
-      <h1>Parking – Estacionamiento Rengo</h1>
+      <h1>Parking – Espacio Quintalba - Rengo</h1>
       <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
     </div>
     <div class="toolbar">
@@ -585,7 +585,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
   // Título
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
+  doc.splitTextToSize('Parking Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
   // Saludo
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
