@@ -26,12 +26,16 @@ button{cursor:pointer;font-weight:600}
 .btn-ok{background:#16803d;border-color:#146c33}
 .btn-warn{background:#b96a09;border-color:#9a5808}
 .btn-ghost{background:#0d1526;border-color:#15213a}
+.btn-cancel{background:#7a1010;border-color:#5b0c0c}
 .hidden{display:none !important}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-.tag{display:inline-block;padding:2px 8px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:12px}
+.tag{display:inline-block;padding:6px 10px;border-radius:9999px;background:#0d1c32;border:1px solid #123;font-size:13px}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{border-bottom:1px solid #1f2e46;padding:8px;text-align:left}
 hr{border:0;border-top:1px solid #1f2e46}
+.muted{color:var(--muted)}
+.biginput{font-size:20px;padding:16px 18px}
+.center{display:flex;align-items:center;justify-content:center}
 </style>
 
 <!-- libs -->
@@ -49,15 +53,29 @@ hr{border:0;border-top:1px solid #1f2e46}
 <div class="container">
   <header>
     <h1>Parking – Estacionamiento Rengo</h1>
-    <div class="row" style="max-width:600px">
+    <div class="row" style="max-width:900px">
       <button class="btn" id="goEntrada">Entrada (Alt+E)</button>
       <button class="btn-warn" id="goSalida">Salida (Alt+S)</button>
       <button class="btn" id="goReportes">Reportes</button>
+      <button class="btn hidden" id="goAdmin">Admin</button>
+      <button class="btn-ghost hidden" id="btnLogout">Cerrar sesión</button>
+      <span id="who" class="muted"></span>
     </div>
   </header>
 
+  <!-- LOGIN -->
+  <section class="card" id="viewLogin">
+    <h2>Acceso</h2>
+    <div class="row">
+      <div><label>Usuario</label><input id="loginUser" placeholder="admin u operador" /></div>
+      <div><label>Clave</label><input id="loginPass" type="password" placeholder="*****" /></div>
+      <div style="align-self:flex-end"><button id="doLogin" class="btn-ok">Entrar</button></div>
+    </div>
+    <div class="muted" style="margin-top:6px">Admin: <span class="mono">admin / 12345</span> · Operador: <span class="mono">operador / 67890</span></div>
+  </section>
+
   <!-- ENTRADA -->
-  <section class="card" id="viewEntrada">
+  <section class="card hidden" id="viewEntrada">
     <h2>Entrada</h2>
     <div class="row">
       <div>
@@ -83,14 +101,18 @@ hr{border:0;border-top:1px solid #1f2e46}
   <!-- SALIDA -->
   <section class="card hidden" id="viewSalida">
     <h2>Salida / Cobro</h2>
-    <p class="muted">El lector QR USB actúa como teclado: al escanear, el valor cae aquí y con Enter se procesa automáticamente.</p>
+    <p class="muted">Lector QR USB: apunta el cursor al campo grande de abajo. La mayoría de lectores envía <b>Enter</b> al final → se cobra automático (efectivo por defecto).</p>
     <div class="row">
       <div style="flex:1 1 100%">
         <label>ID firmado (escanee o pegue y presione Enter)</label>
-        <input id="scanInput" placeholder="id.firma" />
+        <input id="scanInput" class="biginput" placeholder="id.firma" />
       </div>
     </div>
-    <div id="chargeArea" class="card hidden">
+    <div class="center" style="margin-top:8px">
+      <div id="salidaMsg" class="tag">Listo para escanear</div>
+    </div>
+
+    <div id="chargeArea" class="card hidden" style="margin-top:12px">
       <h3>Detalle</h3>
       <table class="table">
         <tbody>
@@ -99,6 +121,7 @@ hr{border:0;border-top:1px solid #1f2e46}
           <tr><th>Salida</th><td id="chOut" class="mono"></td></tr>
           <tr><th>Duración (min)</th><td id="chDur" class="mono"></td></tr>
           <tr><th>Total ($)</th><td id="chTotal" class="mono"></td></tr>
+          <tr><th>Tope diario</th><td id="chCap" class="mono"></td></tr>
         </tbody>
       </table>
       <div class="row">
@@ -106,7 +129,6 @@ hr{border:0;border-top:1px solid #1f2e46}
         <button class="btn" id="btnCobrarTx">Cobrar Transbank</button>
       </div>
     </div>
-    <div id="salidaMsg" class="tag" style="margin-top:8px">Listo</div>
   </section>
 
   <!-- REPORTES -->
@@ -123,14 +145,32 @@ hr{border:0;border-top:1px solid #1f2e46}
       <tbody></tbody>
     </table>
   </section>
+
+  <!-- ADMIN -->
+  <section class="card hidden" id="viewAdmin">
+    <h2>Administración</h2>
+    <div class="row">
+      <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
+      <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
+      <div><label>Precio por minuto adicional ($)</label><input id="tPerMin" type="number" min="0" /></div>
+      <div><label>Máximo diario por ticket ($)</label><input id="tDailyCap" type="number" min="0" /></div>
+      <div style="align-self:flex-end"><button id="btnSaveTariff" class="btn-ok">Guardar parámetros</button></div>
+    </div>
+    <p class="muted">El total cobrado por un ticket en un mismo día no superará el <b>máximo diario</b>. Por defecto: $10.000.</p>
+  </section>
 </div>
 
 <script>
-/* ========= Util ========= */
+/* ========= Config ========= */
 const TZ='America/Santiago';
+const AUTO_CHARGE=true;           // cobra al apretar Enter en Salida
+const DEFAULT_METHOD='efectivo';  // método por defecto
+
+/* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
 const fmtDate = (iso)=> new Date(iso).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
 const nowISO = ()=> new Date().toISOString();
+const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); // YYYY-MM-DD
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
 
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -149,43 +189,104 @@ function verifySigned(signed){
 /* ========= Storage ========= */
 const store={
   get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } },
-  set(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+  set(k,v){ localStorage.setItem(k, JSON.stringify(v)); },
+  del(k){ localStorage.removeItem(k); }
 };
-// estructuras
 if(!store.get('tickets')) store.set('tickets',{});      // id -> ticket
 if(!store.get('payments')) store.set('payments',[]);    // pagos
+if(!store.get('users')) store.set('users',[
+  {user:'admin', pass:'12345', role:'admin'},
+  {user:'operador', pass:'67890', role:'operador'}
+]);
+// Tarifa con tope diario
+if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 
-/* ========= Navegación y atajos ========= */
-const VIEWS=['viewEntrada','viewSalida','viewReportes'];
-function show(id){ VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden'); }
-$('goEntrada').onclick=()=>{ show('viewEntrada'); $('patenteIn').focus(); };
-$('goSalida').onclick =()=>{ show('viewSalida'); $('scanInput').focus(); };
-$('goReportes').onclick=()=>{ fillTable(); show('viewReportes'); };
+/* ========= Sesión / Login ========= */
+const session = { user:null, role:null };
+function saveSession(){ store.set('session', {user:session.user, role:session.role}); }
+function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
+function clearSession(){ store.del('session'); session.user=null; session.role=null; }
 
-window.addEventListener('keydown',(e)=>{
-  if(e.altKey && (e.key==='e'||e.key==='E')){ e.preventDefault(); show('viewEntrada'); $('patenteIn').focus(); }
-  if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); show('viewSalida'); $('scanInput').focus(); }
-});
-
-/* ========= Tarifa simple (puedes ajustar luego) ========= */
-const tariff = { firstMinutes:20, firstPrice:500, perMin:20 };
-function calcCharge(inISO, outISO){
-  const mins = Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
-  if(mins<=tariff.firstMinutes) return {mins, total:tariff.firstPrice};
-  const extra = mins - tariff.firstMinutes;
-  return {mins, total: tariff.firstPrice + extra*tariff.perMin};
+function login(u,p){
+  const user = store.get('users',[]).find(x=>x.user===u && x.pass===p);
+  if(!user) return false;
+  session.user=user.user; session.role=user.role; saveSession(); return true;
 }
 
-/* ========= Generación de ticket (Entrada) ========= */
+function updateHeader(){
+  const logged = !!session.user;
+  $('btnLogout').classList.toggle('hidden', !logged);
+  $('goAdmin').classList.toggle('hidden', !(logged && session.role==='admin'));
+  $('who').textContent = logged ? `Sesión: ${session.user} (${session.role})` : '';
+}
+
+$('doLogin').onclick = ()=>{
+  const u=$('loginUser').value.trim(), p=$('loginPass').value.trim();
+  if(!login(u,p)){ alert('Credenciales inválidas'); return; }
+  updateHeader(); show('viewEntrada'); $('patenteIn').focus();
+};
+$('btnLogout').onclick = ()=>{
+  clearSession(); show('viewLogin'); updateHeader();
+};
+['loginUser','loginPass'].forEach(id=>{
+  $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('doLogin').click(); } });
+});
+
+/* ========= Navegación y atajos ========= */
+const VIEWS=['viewLogin','viewEntrada','viewSalida','viewReportes','viewAdmin'];
+function show(id){ VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden'); }
+$('goEntrada').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); };
+$('goSalida').onclick =()=>{ if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); };
+$('goReportes').onclick=()=>{ if(!session.user){ show('viewLogin'); return;} fillTable(); show('viewReportes'); };
+$('goAdmin').onclick=()=>{ if(!(session.user && session.role==='admin')){ show('viewLogin'); return;} loadTariffUI(); show('viewAdmin'); };
+
+window.addEventListener('keydown',(e)=>{
+  if(e.altKey && (e.key==='e'||e.key==='E')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewEntrada'); $('patenteIn').focus(); }
+  if(e.altKey && (e.key==='s'||e.key==='S')){ e.preventDefault(); if(!session.user){ show('viewLogin'); return;} show('viewSalida'); $('scanInput').focus(); }
+});
+
+/* ========= Tarifa + Cálculo (con tope diario) ========= */
+function getTariff(){ return store.get('tariff',{ firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 }); }
+function setTariff(t){ store.set('tariff', t); }
+function calcCharge(inISO, outISO){
+  const t = getTariff();
+  const mins = Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
+  let total;
+  if(mins<=t.firstMinutes) total = t.firstPrice;
+  else total = t.firstPrice + (mins - t.firstMinutes) * t.perMin;
+  // aplica tope diario por ticket
+  total = Math.min(total, t.dailyCap||Infinity);
+  return {mins, total, cap:t.dailyCap||Infinity};
+}
+
+/* ========= Admin UI ========= */
+function loadTariffUI(){
+  const t=getTariff();
+  $('tFirstMin').value = t.firstMinutes;
+  $('tFirstPrice').value = t.firstPrice;
+  $('tPerMin').value = t.perMin;
+  $('tDailyCap').value = t.dailyCap;
+}
+$('btnSaveTariff').onclick = ()=>{
+  if(!(session.user && session.role==='admin')){ alert('Solo admin'); return; }
+  const t={
+    firstMinutes: Math.max(0, parseInt($('tFirstMin').value||'0',10)),
+    firstPrice:   Math.max(0, parseInt($('tFirstPrice').value||'0',10)),
+    perMin:       Math.max(0, parseInt($('tPerMin').value||'0',10)),
+    dailyCap:     Math.max(0, parseInt($('tDailyCap').value||'0',10))
+  };
+  setTariff(t);
+  alert('Parámetros guardados.');
+};
+
+/* ========= Entrada: generar ticket + PDF (45x250 con QR) ========= */
 $('patenteIn').addEventListener('input', (e)=>{
   const pos=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(pos,pos);
 });
-
 function renderQRPreview(text){
   const el=$('qrPreview'); el.innerHTML='';
   new QRCode(el, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
 }
-
 function buildQRDataURL(text){
   const tmp=document.createElement('div');
   new QRCode(tmp, { text, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
@@ -194,63 +295,60 @@ function buildQRDataURL(text){
   if(img && img.tagName==='CANVAS') return img.toDataURL('image/png');
   return '';
 }
-
-function saveTicket(t){
-  const map=store.get('tickets',{}); map[t.id]=t; store.set('tickets',map);
-}
+function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.set('tickets',map); }
 function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
 function setTicket(id, t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
-function savePayment(ticketId,total,method){
-  const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO()}); store.set('payments',pays);
-}
+function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'mm', format:[58,200], orientation:'portrait' });
+  // tamaño solicitado: 45mm x 250mm
+  const W=45, H=250;
+  const doc = new jsPDF({ unit:'mm', format:[W,H], orientation:'portrait' });
 
-  let y=8, cx=29; // centro (58/2)
-  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  let y=8, cx=W/2;
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
   doc.text('Bienvenido a Estacionamiento Rengo', cx, y, {align:'center'}); y+=6;
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text(welcome||'Bienvenido!', cx, y, {align:'center'}); y+=8;
 
-  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y+=8;
 
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
-  doc.text('Ingreso:', 4, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Ingreso:', 3, y);
   const inStr = new Date(inISO).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
-  doc.text(inStr, 54, y, {align:'right'}); y+=5;
+  doc.text(inStr, W-3, y, {align:'right'}); y+=5;
 
-  doc.setDrawColor(120); doc.line(4,y,54,y); y+=4;
-
-  doc.setFontSize(9);
-  doc.text('Recuerde presentar su ticket para el cobro', cx, y, {align:'center'}); y+=5;
+  doc.setDrawColor(120); doc.line(3,y,W-3,y); y+=4;
 
   doc.setFontSize(8);
-  doc.text('ID:', 4, y); doc.text(signed, 54, y, {align:'right'}); y+=6;
+  doc.text('Recuerde presentar su ticket para el cobro', cx, y, {align:'center'}); y+=5;
+
+  // ID en varias líneas si es necesario
+  doc.setFontSize(8);
+  const idParts = doc.splitTextToSize(`ID: ${signed}`, W-6);
+  idParts.forEach(line=>{ doc.text(line, 3, y); y+=4; });
 
   if(qrDataURL){
-    doc.addImage(qrDataURL, 'PNG', (58-40)/2, y, 40, 40); // 40mm ancho
-    y+=42;
+    const QRW=30, QRH=30, x=(W-QRW)/2;
+    doc.addImage(qrDataURL, 'PNG', x, y, QRW, QRH);
+    y+=QRH+6;
   }
 
   doc.setFontSize(8);
   doc.text('¡Conserve este ticket!', cx, y, {align:'center'}); y+=4;
 
-  // abrir en nueva ventana e imprimir
+  // imprime
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   const w = window.open(url);
-  if(w){
-    w.onload = () => { try{ w.focus(); w.print(); }catch(_){} };
-  }else{
-    // fallback
-    doc.save(`ticket_${plate}.pdf`);
-  }
+  if(w){ w.onload = () => { try{ w.focus(); w.print(); }catch(_){} }; }
+  else { doc.save(`ticket_${plate}.pdf`); }
 }
 
 $('btnGenerar').onclick = () => {
+  if(!session.user){ show('viewLogin'); return; }
   const plate = $('patenteIn').value.trim().toUpperCase();
   const welcome = $('saludoIn').value.trim() || 'Bienvenido!';
   if(!plate){ alert('Ingresa la patente'); $('patenteIn').focus(); return; }
@@ -259,23 +357,20 @@ $('btnGenerar').onclick = () => {
   const signed = signId(id);
   const inISO = nowISO();
 
-  // Persistir ticket abierto
-  const t = { id, signed, plate, in: inISO, out: null, status:'open' };
+  const t = { id, signed, plate, in: inISO, out: null, status:'open', by:session.user };
   saveTicket(t);
 
-  // Render preview QR
   renderQRPreview(signed); $('idPreview').textContent = signed;
 
-  // Generar imagen QR y PDF para impresión en 58x200
   const qrDataURL = buildQRDataURL(signed);
   printTicketPDF({ plate, inISO, signed, qrDataURL, welcome });
 
-  // limpiar campo patente para el siguiente
   $('patenteIn').value=''; $('patenteIn').focus();
 };
 
-/* ========= Salida / Cobro ========= */
-function handleSigned(raw){
+/* ========= Salida / Cobro (lector) ========= */
+function handleSigned(raw, auto=true){
+  if(!session.user){ show('viewLogin'); return; }
   const id = verifySigned(raw);
   if(!id){ $('salidaMsg').textContent='QR/ID inválido'; $('salidaMsg').style.background='#3a1111'; return; }
   const t = getTicket(id);
@@ -283,32 +378,35 @@ function handleSigned(raw){
   if(t.status==='closed'){ $('salidaMsg').textContent='Ticket ya cerrado'; $('salidaMsg').style.background='#3a1111'; return; }
 
   const outISO = nowISO();
-  const { mins, total } = calcCharge(t.in, outISO);
+  const { mins, total, cap } = calcCharge(t.in, outISO);
 
-  // pintar detalle
   $('chPlate').textContent = t.plate;
-  $('chIn').textContent = fmtDate(t.in);
-  $('chOut').textContent = fmtDate(outISO);
-  $('chDur').textContent = String(mins);
+  $('chIn').textContent    = fmtDate(t.in);
+  $('chOut').textContent   = fmtDate(outISO);
+  $('chDur').textContent   = String(mins);
   $('chTotal').textContent = money(total);
+  $('chCap').textContent   = money(cap);
+
   $('chargeArea').classList.remove('hidden');
   $('chargeArea').dataset.id = id;
   $('chargeArea').dataset.total = total;
 
   $('salidaMsg').textContent='Listo para cobrar';
   $('salidaMsg').style.background='#0d1c32';
-}
 
+  if(auto && AUTO_CHARGE){
+    doCharge(DEFAULT_METHOD);
+  }
+}
 $('scanInput').addEventListener('keydown',(e)=>{
   if(e.key==='Enter'){
     e.preventDefault();
     const raw = $('scanInput').value.trim();
     if(!raw) return;
-    handleSigned(raw);
+    handleSigned(raw, true);
     $('scanInput').select();
   }
 });
-
 function doCharge(method){
   const id = $('chargeArea').dataset.id;
   const total = Number($('chargeArea').dataset.total||0);
@@ -353,10 +451,10 @@ $('btnExportCSV').onclick = ()=>{
   }
   const csv = rows.map(r=> r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
   const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=`tickets_${new Date().toLocaleDateString('en-CA',{timeZone:TZ})}.csv`; a.click();
+  a.href=URL.createObjectURL(blob); a.download=`tickets_${todayLocal()}.csv`; a.click();
 };
 $('btnFinDiaPDF').onclick = ()=>{
-  const day = new Date().toLocaleDateString('en-CA',{timeZone:TZ}); // YYYY-MM-DD local
+  const day = todayLocal();
   const { jsPDF } = window.jspdf; const doc = new jsPDF({orientation:'landscape'});
   doc.setFontSize(14); doc.text(`Fin de día – ${day}`, 14, 18);
   doc.setFontSize(10); doc.text(`Generado: ${new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false})}`,14,25);
@@ -379,7 +477,10 @@ $('btnFinDiaPDF').onclick = ()=>{
 };
 
 /* ========= inicio ========= */
-show('viewEntrada');
+(function init(){
+  if(loadSession()){ updateHeader(); show('viewEntrada'); $('patenteIn').focus(); }
+  else{ updateHeader(); show('viewLogin'); }
+})();
 </script>
 </body>
 </html>
