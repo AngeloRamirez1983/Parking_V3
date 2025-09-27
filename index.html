@@ -62,6 +62,12 @@ hr{border:0;border-top:1px solid #1f2e46}
 .users-form>*{flex:1 1 220px}
 .role-pill{padding:4px 10px;border-radius:999px;border:1px solid #1d3659;background:#0c1a2d;font-size:12px}
 .actions{display:flex;gap:8px}
+
+/* Totales Reporte */
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.summary .box{background:#0d1c32;border:1px solid #234;border-radius:14px;padding:12px 16px}
+.summary .box h4{margin:0 0 4px 0;font-size:14px;color:#93a4c0}
+.summary .box .big{font-size:22px;font-weight:800}
 </style>
 
 <!-- libs -->
@@ -107,6 +113,7 @@ hr{border:0;border-top:1px solid #1f2e46}
   <!-- ENTRADA -->
   <section class="card hidden" id="viewEntrada">
     <div class="backbar"><button class="btn-ghost" id="backEntrada">← Atrás</button><h2>Entrada</h2><div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnEntrada">—</b></div></div>
+    <div id="zBannerEntrada" class="tag hidden" style="background:#3a1111;border-color:#5b1a1a;margin-bottom:8px">🚫 Cierre Z activo para hoy. No se pueden hacer nuevas entradas.</div>
     <div class="row">
       <div>
         <label>Patente</label>
@@ -131,6 +138,7 @@ hr{border:0;border-top:1px solid #1f2e46}
   <!-- SALIDA -->
   <section class="card hidden" id="viewSalida">
     <div class="backbar"><button class="btn-ghost" id="backSalida">← Atrás</button><h2>Salida / Cobro</h2><div class="kpi"><span class="muted">Disponibles:</span> <b id="freeOnSalida">—</b></div></div>
+    <div id="zBannerSalida" class="tag hidden" style="background:#3a1111;border-color:#5b1a1a;margin-bottom:8px">🚫 Cierre Z activo para hoy. No se pueden realizar cobros.</div>
     <p class="muted">Lector QR USB: enfoque el campo grande, escanee; la mayoría agrega <b>Enter</b> al final.</p>
     <div class="row">
       <div style="flex:1 1 100%">
@@ -190,9 +198,18 @@ hr{border:0;border-top:1px solid #1f2e46}
         <button class="btn" id="btnApplyFilter">Aplicar filtro</button>
       </div>
     </div>
+
+    <!-- Totales visibles del rango filtrado -->
+    <div class="summary" id="summaryBoxes">
+      <div class="box"><h4>Total ventas (rango)</h4><div class="big" id="sumTotal">$0</div></div>
+      <div class="box"><h4>Vehículos salidos</h4><div class="big" id="sumCount">0</div></div>
+    </div>
+
     <div class="row" style="margin-top:6px">
       <button class="btn" id="btnExportXLSX">Exportar XLSX</button>
       <button class="btn" id="btnFinDiaPDF">Fin de día (PDF)</button>
+      <button class="btn" id="btnCierreX">Cierre X (XLSX+PDF)</button>
+      <button class="btn-warn" id="btnCierreZ">Cierre Z (XLSX+PDF)</button>
     </div>
     <table class="table" id="tblTickets">
       <thead>
@@ -228,7 +245,6 @@ hr{border:0;border-top:1px solid #1f2e46}
       <span class="muted">Admin puede crear/editar/eliminar usuarios</span>
     </div>
 
-    <!-- Form crear -->
     <div class="users-form">
       <div><label>Usuario</label><input id="newUser" placeholder="nuevo usuario" autocomplete="off" /></div>
       <div><label>Contraseña</label><input id="newPass" placeholder="******" type="password" /></div>
@@ -242,7 +258,6 @@ hr{border:0;border-top:1px solid #1f2e46}
       <div style="align-self:flex-end"><button id="btnAddUser" class="btn-ok">Agregar usuario</button></div>
     </div>
 
-    <!-- Tabla -->
     <table class="table" id="tblUsers">
       <thead><tr><th>Usuario</th><th>Rol</th><th>Acciones</th></tr></thead>
       <tbody></tbody>
@@ -317,7 +332,7 @@ const ALWAYS_LOGIN=true;           // DEMO: siempre exigir login al abrir
 const $ = (id)=>document.getElementById(id);
 const fmtDate = (iso)=> new Date(iso).toLocaleString('es-CL',{timeZone:TZ,hour12:false});
 const nowISO = ()=> new Date().toISOString();
-const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ});
+const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); // YYYY-MM-DD
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
@@ -335,6 +350,7 @@ if(!store.get('users')) store.set('users',[
 ]);
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 if(store.get('capacity')==null) store.set('capacity', 50);
+if(!store.get('zClosedDate')) store.set('zClosedDate', ''); // YYYY-MM-DD del último cierre Z
 
 /* ========= Sesión / Login + Inactividad ========= */
 const session = { user:null, role:null }; let inactivityTimer=null;
@@ -360,6 +376,7 @@ function show(id){
   VIEWS.forEach(v=>$(v).classList.add('hidden')); $(id).classList.remove('hidden');
   updateOccupancyUI();
   if(id==='viewSalida') $('scanInput').focus();
+  if(id==='viewEntrada'||id==='viewSalida') refreshZBanners();
 }
 function pushView(id){ const current=VIEWS.find(v=> !$(v).classList.contains('hidden')); if(current) navStack.push(current); show(id); }
 function back(){ const prev=navStack.pop(); if(prev) show(prev); }
@@ -405,6 +422,16 @@ function calcCharge(inISO, outISO){
   return {mins,total,cap:t.dailyCap||Infinity};
 }
 
+/* ========= Cierre Z (bloqueo del día) ========= */
+function getZClosedDate(){ return store.get('zClosedDate','')||''; }
+function setZClosedDate(d){ store.set('zClosedDate', d||''); }
+function zLockedToday(){ return getZClosedDate()===todayLocal(); }
+function refreshZBanners(){
+  const locked = zLockedToday();
+  $('zBannerEntrada').classList.toggle('hidden', !locked);
+  $('zBannerSalida').classList.toggle('hidden', !locked);
+}
+
 /* ========= Admin UI ========= */
 function loadAdminUI(){
   const t=getTariff(); $('tFirstMin').value=t.firstMinutes; $('tFirstPrice').value=t.firstPrice;
@@ -442,7 +469,6 @@ function renderUsersTable(){
     tr.innerHTML=`<td class="mono">${u.user}</td><td>${pill}</td><td>${actions}</td>`;
     tbody.appendChild(tr);
   });
-  // acciones
   tbody.querySelectorAll('button[data-edit]').forEach(b=> b.onclick=()=> openEditUser(b.dataset.edit));
   tbody.querySelectorAll('button[data-del]').forEach(b=> b.onclick=()=> deleteUser(b.dataset.del));
 }
@@ -494,7 +520,6 @@ $('btnSaveUser').onclick=()=>{
   const list=getUsers();
   const idx=list.findIndex(x=>x.user===username);
   if(idx<0) return;
-  // Validar admin mínimo
   if(list[idx].role==='admin' && newRole!=='admin' && countAdmins(list)<=1){
     return alert('Debe existir al menos un admin.');
   }
@@ -509,12 +534,11 @@ $('btnSaveUser').onclick=()=>{
 /* ========= Entrada: generar ticket + PDF (45x250 con QR JPEG 35mm) ========= */
 $('patenteIn').addEventListener('input',(e)=>{ const pos=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(pos,pos); });
 function renderQRPreview(text){ const el=$('qrPreview'); el.innerHTML=''; new QRCode(el,{text, width:180, height:180, correctLevel:QRCode.CorrectLevel.M}); }
-/* QR como JPEG para compatibilidad */
 function buildQRDataURL(text){
   const tmp=document.createElement('div'); new QRCode(tmp,{text,width:180,height:180,correctLevel:QRCode.CorrectLevel.M});
-  const imgOrCanvas=tmp.querySelector('canvas')||tmp.querySelector('img');
+  const src=tmp.querySelector('canvas')||tmp.querySelector('img');
   const canvas=document.createElement('canvas'); canvas.width=180; canvas.height=180; const ctx=canvas.getContext('2d');
-  if(imgOrCanvas){ try{ ctx.drawImage(imgOrCanvas,0,0);}catch(_){}} else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,180,180); }
+  if(src){ try{ ctx.drawImage(src,0,0);}catch(_){}} else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,180,180); }
   return canvas.toDataURL('image/jpeg',0.95);
 }
 function saveTicket(t){ const map=store.get('tickets',{}); map[t.id]=t; store.set('tickets',map); }
@@ -522,7 +546,7 @@ function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null;
 function setTicket(id,t){ const map=store.get('tickets',{}); map[id]=t; store.set('tickets',map); }
 function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO(),by:session.user}); store.set('payments',pays); }
 
-/* Advertencia de patente duplicada (ticket abierto) */
+/* Duplicado patente (ticket abierto) */
 function plateHasOpen(plate){
   plate = (plate||'').toUpperCase().trim();
   const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
@@ -530,46 +554,46 @@ function plateHasOpen(plate){
 
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
-  const W = 45, H = 250, M = 3;               // mm
+  const W = 45, H = 250, M = 3;
   const doc = new jsPDF({ unit:'mm', format:[W,H], orientation:'portrait' });
 
-  let y = 8, cx = W/2, inner = W - M*2;
+  let y = 8, cx = W/2, inner = W - M*2, lh = 5;
 
-  // Título (wrap)
+  // Título
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
+  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
-  // Saludo (wrap)
+  // Saludo
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 5; });
+  doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
   y += 2;
 
   // Patente
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y += 8;
 
-  // Hora de ingreso (wrap a la derecha)
+  // Hora de ingreso (mejor wrap y mayor salto)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Ingreso:', M, y);
   const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
-  const inLines = doc.splitTextToSize(inStr, inner * 0.9);
-  inLines.forEach((line, i) => { doc.text(line, W - M, y + i*4, {align:'right'}); });
-  y += Math.max(5, inLines.length * 4 + 1);
+  const inLines = doc.splitTextToSize(inStr, inner * 0.75); // más estrecho
+  inLines.forEach((line, i) => { doc.text(line, W - M, y + i*lh, {align:'right'}); });
+  y += Math.max(lh, inLines.length * lh) + 3; // más colchón
 
   // Separador
   doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
 
-  // Mensaje recordatorio (wrap)
+  // Mensaje recordatorio
   doc.setFontSize(8);
-  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += 4; });
+  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
   y += 1;
 
-  // ID (wrap)
+  // ID
   doc.setFontSize(8);
-  doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += 4; });
+  doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += lh-1; });
   y += 2;
 
-  // QR centrado (JPEG) – 35 mm
+  // QR
   if (qrDataURL) {
     const QRW = 35, QRH = 35, x = (W - QRW) / 2;
     doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
@@ -580,7 +604,6 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.setFontSize(7);
   doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'}); y += 4;
 
-  // Imprimir / Guardar
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   const w = window.open(url);
@@ -590,19 +613,16 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
 $('btnGenerar').onclick=()=>{
   if(!session.user) return show('viewLogin');
+  if(zLockedToday()){ alert('Cierre Z activo: no se permiten nuevas entradas hoy.'); return; }
   const plate=$('patenteIn').value.trim().toUpperCase(); const welcome=$('saludoIn').value.trim()||'¡Bienvenido!';
   if(!plate){ alert('Ingresa la patente'); $('patenteIn').focus(); return; }
 
-  // ⚠️ Advertencia de duplicado
   if (plateHasOpen(plate)) {
-    // Buscar el ticket abierto más reciente para mostrar referencia
     const map=store.get('tickets',{}); 
-    const openOnPlate=Object.values(map)
-      .filter(t=>t.plate.toUpperCase()===plate && t.status==='open')
-      .sort((a,b)=> a.in < b.in ? 1 : -1);
+    const openOnPlate=Object.values(map).filter(t=>t.plate.toUpperCase()===plate && t.status==='open').sort((a,b)=> a.in < b.in ? 1 : -1);
     const lastIn = openOnPlate.length ? fmtDate(openOnPlate[0].in) : 'fecha desconocida';
-    const ok = confirm(`⚠️ La patente ${plate} ya tiene un ticket abierto (ingreso: ${lastIn}).\n¿Deseas crear otro ticket igualmente?`);
-    if(!ok) return; // cancela la operación
+    const ok = confirm(`⚠️ La patente ${plate} ya tiene ticket abierto (ingreso: ${lastIn}).\n¿Crear otro ticket igualmente?`);
+    if(!ok) return;
   }
 
   const id=genId(), signed=signId(id), inISO=nowISO();
@@ -615,6 +635,7 @@ $('btnGenerar').onclick=()=>{
 /* ========= Salida / Cobro ========= */
 function handleSigned(raw){
   if(!session.user) return show('viewLogin');
+  if(zLockedToday()){ setMsg('Cierre Z activo: no se pueden realizar cobros.',true); return; }
   const id=verifySigned(raw); if(!id){ setMsg('QR/ID inválido',true); return; }
   const t=getTicket(id); if(!t){ setMsg('Ticket no encontrado',true); return; }
   if(t.status==='closed'){ setMsg('Ticket ya cerrado',true); return; }
@@ -628,16 +649,14 @@ function setMsg(text,isErr=false){ const el=$('salidaMsg'); el.textContent=text;
 $('scanInput').addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=$('scanInput').value.trim(); if(!raw) return; handleSigned(raw); $('scanInput').select(); } });
 
 function doCharge(method){
+  if(zLockedToday()){ alert('Cierre Z activo: no se pueden realizar cobros.'); return; }
   const id=$('chargeArea').dataset.id; const total=Number($('chargeArea').dataset.total||0); const t=getTicket(id);
   if(!t) return alert('Ticket no encontrado');
   if(!confirm(`Confirma cobro de $${money(total)} por ${method}?`)) return;
   t.out=nowISO(); t.status='closed'; t.payMethod=method; setTicket(id,t); savePayment(id,total,method);
   $('chargeArea').classList.add('hidden'); setMsg(`Cobrado $${money(total)} (${method})`);
   applyFilter(); updateOccupancyUI();
-  // volver a Entrada y foco en patente
-  navStack.length = 0;
-  show('viewEntrada');
-  $('patenteIn').focus();
+  navStack.length = 0; show('viewEntrada'); $('patenteIn').focus();
 }
 $('btnCobrarEfe').onclick=()=> doCharge('efectivo');
 $('btnCobrarTx').onclick =()=> doCharge('transbank');
@@ -657,10 +676,17 @@ function getFilteredTickets(){
     return true;
   }).sort((a,b)=>(a.in<b.in?1:-1));
 }
+function calcSummaryOnFiltered(){
+  const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
+  const list=getFilteredTickets().filter(t=>t.status==='closed');
+  const total=list.reduce((acc,t)=> acc + (pm.get(t.id)?.total||0), 0);
+  return { total, count:list.length };
+}
 function fillTable(){
   const tbody=$('tblTickets').querySelector('tbody'); tbody.innerHTML='';
   const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  getFilteredTickets().forEach(t=>{
+  const list = getFilteredTickets();
+  list.forEach(t=>{
     const p=pm.get(t.id); const tr=document.createElement('tr');
     tr.innerHTML=`
       <td class="mono">${t.id}</td>
@@ -673,12 +699,15 @@ function fillTable(){
       <td>${t.by||''}</td>`;
     tbody.appendChild(tr);
   });
+  const s=calcSummaryOnFiltered();
+  $('sumTotal').textContent = '$'+money(s.total);
+  $('sumCount').textContent = String(s.count);
 }
 function applyFilter(){ fillTable(); }
 $('btnApplyFilter').onclick=applyFilter;
 $('filterPlate').addEventListener('input',()=>{ const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
-/* Export XLSX */
+/* Export XLSX (rango filtrado) */
 $('btnExportXLSX').onclick=()=>{
   const wb=XLSX.utils.book_new();
   const pays=store.get('payments',[]); const pm=new Map(pays.map(p=>[p.ticketId,p]));
@@ -694,26 +723,43 @@ $('btnExportXLSX').onclick=()=>{
   lost.forEach(x=> rowsLost.push([x.ticketId,x.plate,fmtDate(x.at),x.ownerRut,x.ownerName,x.userRut,x.userName,x.by]));
   const ws2=XLSX.utils.aoa_to_sheet(rowsLost); XLSX.utils.book_append_sheet(wb, ws2, 'TicketsPerdidos');
 
+  // Totales del rango (cerrados)
+  const s=calcSummaryOnFiltered();
+  const ws3=XLSX.utils.aoa_to_sheet([['Resumen'],['Total ventas (rango)','$'+money(s.total)],['Vehículos salidos',s.count]]);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Resumen');
+
   XLSX.writeFile(wb, `reporte_${todayLocal()}.xlsx`);
 };
 
-/* Fin de día PDF */
-$('btnFinDiaPDF').onclick=()=>{
-  const day=todayLocal(); const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'landscape'});
-  doc.setFontSize(14); doc.text(`Fin de día – ${day}`,14,18);
+/* Fin de día PDF (hoy) conservado */
+$('btnFinDiaPDF').onclick=()=> buildDailyPDF(todayLocal(), 'fin_dia');
+
+/* ===== Utilidades de Cierre X / Z (ambos archivos y totales) ===== */
+function buildDailyData(day){
+  const map=store.get('tickets',{}), pays=store.get('payments',[]);
+  const pm=new Map(pays.map(p=>[p.ticketId,p]));
+  const rows=Object.values(map).filter(t=> ticketDateLocalDay(t.in)===day && t.status==='closed');
+  const total=rows.reduce((acc,t)=> acc + (pm.get(t.id)?.total||0), 0);
+  const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
+  return { rows, total, count:rows.length, lost, pm };
+}
+function buildDailyPDF(day, prefix){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'landscape'});
+  doc.setFontSize(14); doc.text(`${prefix==='cierre_z'?'Cierre Z':'Cierre X'} – ${day}`,14,18);
   doc.setFontSize(10); doc.text(`Generado: ${new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false})}`,14,25);
   let y=34; doc.setFontSize(9);
-  const map=store.get('tickets',{}), pays=store.get('payments',[]), pm=new Map(pays.map(p=>[p.ticketId,p]));
-  const rows=Object.values(map).filter(t=> ticketDateLocalDay(t.in)===day && t.status==='closed');
+
+  const {rows,total,count,lost,pm}=buildDailyData(day);
+
   doc.text('Patente',14,y); doc.text('Ingreso',40,y); doc.text('Salida',90,y); doc.text('Monto',140,y); doc.text('Medio',165,y); y+=4; doc.line(14,y,200,y); y+=6;
-  let total=0; rows.forEach(r=>{ const p=pm.get(r.id); const val=p?.total||0; total+=val;
+  rows.forEach(r=>{ const p=pm.get(r.id); const val=p?.total||0;
     doc.text(r.plate,14,y); doc.text(fmtDate(r.in),40,y); doc.text(fmtDate(r.out),90,y);
     doc.text(money(val),140,y,{align:'right'}); doc.text(p?.method||'',165,y); y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
   });
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
-  doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Autos: ${rows.length}`,100,y);
-  // Tickets perdidos
-  const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
+  doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Autos: ${count}`,100,y);
+
+  // Perdidos
   y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
   doc.text('Patente',14,y); doc.text('Dueño',45,y); doc.text('Usuario',110,y); doc.text('Fecha',165,y); y+=4; doc.line(14,y,200,y); y+=6;
   lost.forEach(x=>{
@@ -723,7 +769,48 @@ $('btnFinDiaPDF').onclick=()=>{
     doc.text(fmtDate(x.at),165,y);
     y+=6; if(y>180){ doc.addPage('landscape'); y=20; }
   });
-  doc.save(`fin_dia_${day}.pdf`);
+
+  doc.save(`${prefix}_${day}.pdf`);
+}
+function buildDailyXLSX(day, prefix){
+  const wb=XLSX.utils.book_new();
+  const {rows,total,count,lost,pm}=buildDailyData(day);
+
+  const sheetRows=[['ID','Patente','Ingreso','Salida','Monto','Medio','Operador']];
+  rows.forEach(t=>{
+    const p=pm.get(t.id);
+    sheetRows.push([t.id,t.plate,fmtDate(t.in),fmtDate(t.out),p?.total||0,p?.method||'',t.by||'']);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(sheetRows); XLSX.utils.book_append_sheet(wb, ws, 'Cierre');
+
+  const lostRows=[['TicketID','Patente','Fecha reimpresión','RUT dueño','Nombre dueño','RUT usuario','Nombre usuario','Operador']];
+  lost.forEach(x=> lostRows.push([x.ticketId,x.plate,fmtDate(x.at),x.ownerRut,x.ownerName,x.userRut,x.userName,x.by]));
+  const ws2=XLSX.utils.aoa_to_sheet(lostRows); XLSX.utils.book_append_sheet(wb, ws2, 'TicketsPerdidos');
+
+  const ws3=XLSX.utils.aoa_to_sheet([['Resumen'],['Total ventas del día', total],['Vehículos salidos', count]]);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Resumen');
+
+  XLSX.writeFile(wb, `${prefix}_${day}.xlsx`);
+}
+
+/* Botón Cierre X: NO bloquea, solo genera ambos archivos */
+$('btnCierreX').onclick=()=>{
+  const day=todayLocal();
+  if(!confirm(`Cierre X (${day}): genera XLSX + PDF sin bloquear operaciones.\n¿Continuar?`)) return;
+  buildDailyXLSX(day,'cierre_x');
+  buildDailyPDF(day,'cierre_x');
+  alert('Cierre X generado (XLSX + PDF).');
+};
+
+/* Botón Cierre Z: BLOQUEA operaciones del día */
+$('btnCierreZ').onclick=()=>{
+  const day=todayLocal();
+  if(!confirm(`⚠️ Cierre Z (${day}): genera XLSX + PDF y BLOQUEA nuevas operaciones por el resto del día.\nNo podrás ingresar ni cobrar hasta el día siguiente.\n\n¿Confirmas Cierre Z?`)) return;
+  buildDailyXLSX(day,'cierre_z');
+  buildDailyPDF(day,'cierre_z');
+  setZClosedDate(day);
+  refreshZBanners();
+  alert('Cierre Z aplicado. Operaciones bloqueadas hasta el próximo día.');
 };
 
 /* ========= Modal Buscar Vehículo / Ticket perdido ========= */
@@ -754,7 +841,6 @@ function renderSearch(){
     tbody.appendChild(tr);
   });
 
-  // manejar selección
   tbody.querySelectorAll('.selTicket').forEach(cb=>{
     cb.addEventListener('change', updateLostSelectionState);
   });
@@ -762,23 +848,13 @@ function renderSearch(){
 }
 
 function resetLostForm(){ $('lostOwnerRut').value=''; $('lostOwnerName').value=''; $('lostUserRut').value=''; $('lostUserName').value=''; }
-
 function validRutLike(s){ return !!(s && s.length>=8); }
-
-function getSelectedTicketIds(){
-  return Array.from(document.querySelectorAll('#searchBody .selTicket:checked')).map(cb=> cb.dataset.id);
-}
-
-function updateLostSelectionState(){
-  const ids = getSelectedTicketIds();
-  $('btnReprintLost').disabled = (ids.length!==1);
-}
+function getSelectedTicketIds(){ return Array.from(document.querySelectorAll('#searchBody .selTicket:checked')).map(cb=> cb.dataset.id); }
+function updateLostSelectionState(){ const ids=getSelectedTicketIds(); $('btnReprintLost').disabled=(ids.length!==1); }
 
 $('btnReprintLost').onclick=()=>{
-  const ids = getSelectedTicketIds();
-  if(ids.length!==1){ alert('Selecciona exactamente 1 ticket para reimprimir.'); return; }
-  const ticketId = ids[0];
-  const t=getTicket(ticketId); if(!t) return alert('Ticket no encontrado');
+  const ids=getSelectedTicketIds(); if(ids.length!==1){ alert('Selecciona exactamente 1 ticket.'); return; }
+  const t=getTicket(ids[0]); if(!t) return alert('Ticket no encontrado');
 
   const ownerRut=$('lostOwnerRut').value.trim(), ownerName=$('lostOwnerName').value.trim();
   const userRut=$('lostUserRut').value.trim(), userName=$('lostUserName').value.trim();
@@ -806,7 +882,11 @@ $('doLogin').onclick=doLoginFlow;
 /* ========= Init ========= */
 (function init(){
   // DEMO: siempre mostrar login al abrir
-  clearSession(); updateHeader(); show('viewLogin'); defaultDates();
+  clearSession(); updateHeader(); show('viewLogin'); defaultDates(); refreshZBanners();
+
+  // Si el zClosedDate es anterior a hoy, se libera automáticamente (no se borra el histórico, solo deja operar).
+  const z = getZClosedDate();
+  if(z && z!==todayLocal()) refreshZBanners();
 })();
 
 function defaultDates(){ const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; }
