@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Parking – Estacionamiento Rengo</title>
+<title>Parking – Espacio Quintalba - Rengo</title>
 
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0ea5e9" />
@@ -579,7 +579,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   let y = 8, cx = W/2, inner = W - M*2, lh = 5;
 
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
+  doc.splitTextToSize('Parking Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
@@ -598,7 +598,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
 
   doc.setFontSize(8);
-  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
+  doc.splitTextToSize('Recuerde conservar su ticket', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
   y += 1;
 
   doc.setFontSize(8);
