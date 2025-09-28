@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Parking – Estacionamiento Rengo</title>
+<title>Parking – Espacio Quintalba - Rengo</title>
 
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0ea5e9" />
@@ -93,7 +93,7 @@ body.alt input, body.alt select{border-radius:8px}
 <div class="container">
   <header>
     <div class="toolbar">
-      <h1>Parking – Estacionamiento Rengo</h1>
+      <h1>Parking – Espacio Quintalba - Rengo</h1>
       <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
     </div>
     <div class="toolbar">
@@ -207,7 +207,6 @@ body.alt input, body.alt select{border-radius:8px}
       </div>
     </div>
 
-    <!-- Totales visibles del rango filtrado -->
     <div class="summary" id="summaryBoxes">
       <div class="box"><h4>Total ventas (rango)</h4><div class="big" id="sumTotal">$0</div></div>
       <div class="box"><h4>Vehículos fuera</h4><div class="big" id="sumCount">0</div></div>
@@ -231,7 +230,6 @@ body.alt input, body.alt select{border-radius:8px}
   <section class="card hidden" id="viewAdmin">
     <div class="backbar"><button class="btn-ghost" id="backAdmin">← Atrás</button><h2>Administración</h2><span class="badge" id="freeOnAdmin">— / —</span></div>
 
-    <!-- Parámetros -->
     <div class="row">
       <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
       <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
@@ -245,7 +243,6 @@ body.alt input, body.alt select{border-radius:8px}
 
     <hr/>
 
-    <!-- Gestión de usuarios -->
     <div class="users-head">
       <h3>Usuarios</h3>
       <span class="muted">Admin puede crear/editar/eliminar usuarios</span>
@@ -357,8 +354,8 @@ if(!store.get('users')) store.set('users',[
 ]);
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 if(store.get('capacity')==null) store.set('capacity', 50);
-if(!store.get('zClosedDate')) store.set('zClosedDate', '');         // bloqueo día actual (manual)
-if(!store.get('zAutoLog')) store.set('zAutoLog', {});               // { 'YYYY-MM-DD': true } días ya auto-Z
+if(!store.get('zClosedDate')) store.set('zClosedDate', '');
+if(!store.get('zAutoLog')) store.set('zAutoLog', {});
 
 /* ========= Sesión ========= */
 const session = { user:null, role:null }; let inactivityTimer=null;
@@ -577,8 +574,7 @@ function plateHasOpen(plate){
   const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
 }
 
-/* === NUEVA impresión: iframe oculto para no dejar PDF abierto === */
-<script>
+/* === Impresión: iframe oculto para no dejar PDF abierto === */
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
   const W = 45, H = 250, M = 3;
@@ -586,162 +582,61 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
   let y = 8, cx = W/2, inner = W - M*2, lh = 5;
 
-  // Título
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
+  doc.splitTextToSize('Parking Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
-  // Saludo
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
   y += 2;
 
-  // Patente
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y += 8;
 
-  // Hora de ingreso (wrap)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Ingreso:', M, y);
-  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:'America/Santiago', hour12:false });
+  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
   const inLines = doc.splitTextToSize(inStr, inner * 0.75);
   inLines.forEach((line, i) => { doc.text(line, W - M, y + i*lh, {align:'right'}); });
   y += Math.max(lh, inLines.length * lh) + 3;
 
-  // Separador
   doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
 
-  // Mensaje recordatorio
   doc.setFontSize(8);
   doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
   y += 1;
 
-  // ID
   doc.setFontSize(8);
   doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += lh-1; });
   y += 2;
 
-  // QR (35mm centrado)
   if (qrDataURL) {
     const QRW = 35, QRH = 35, x = (W - QRW) / 2;
     doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
     y += QRH + 6;
   }
 
-  // Pie
   doc.setFontSize(7);
   doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'});
 
-  // === Genera el PDF como Blob
-  const blob = doc.output('blob'); // application/pdf
-  const pdfUrl = URL.createObjectURL(blob);
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
 
-  // === A) Intento principal: IFRAME oculto con PDF
-  const tryIframePrint = () => new Promise((resolve, reject) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0'; iframe.style.bottom = '0';
-    iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
-    const cleanup = () => { try{iframe.remove();}catch(_){ } };
-    let done = false;
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0'; iframe.style.bottom = '0';
+  iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+  document.body.appendChild(iframe);
 
-    iframe.onload = () => {
-      // Pequeño delay para que Chrome termine de pintar el visor
-      setTimeout(() => {
-        try {
-          const w = iframe.contentWindow;
-          // Escucha onafterprint (algunos drivers lo disparan)
-          const onAfter = () => { if(!done){ done=true; cleanup(); resolve(); } };
-          w.addEventListener('afterprint', onAfter, { once:true });
-          // Timeout de seguridad: si no dispara afterprint, igual cerramos y resolvemos
-          setTimeout(() => { if(!done){ done=true; cleanup(); resolve(); } }, 2500);
-          w.focus();
-          w.print(); // con --kiosk-printing no aparece diálogo
-        } catch (e) {
-          cleanup();
-          reject(e);
-        }
-      }, 200);
-    };
+  const cleanup = () => { try{URL.revokeObjectURL(url);}catch(_){} try{iframe.remove();}catch(_){} };
 
-    iframe.onerror = (e) => { cleanup(); reject(new Error('iframe load error')); };
-
-    document.body.appendChild(iframe);
-    iframe.src = pdfUrl;
-  });
-
-  // === B) Fallback: HTML temporal + <embed> del PDF
-  const tryEmbedPrint = () => new Promise((resolve, reject) => {
-    const html = `
-      <html><head><meta charset="utf-8"><title>Ticket</title>
-      <style>@page{size:45mm 250mm;margin:0} html,body{margin:0;padding:0}</style>
-      </head>
-      <body>
-        <embed src="${pdfUrl}" type="application/pdf" style="width:100%;height:100vh;">
-        <script>
-          setTimeout(function(){
-            try{
-              window.focus(); window.print();
-              setTimeout(()=>window.close && window.close(), 800);
-            }catch(e){}
-          }, 300);
-        <\/script>
-      </body></html>`;
-    const blobHtml = new Blob([html], {type:'text/html'});
-    const urlHtml = URL.createObjectURL(blobHtml);
-
-    const iframe = document.createElement('iframe');
-    iframe.style.position='fixed'; iframe.style.right='0'; iframe.style.bottom='0';
-    iframe.style.width='0'; iframe.style.height='0'; iframe.style.border='0';
-
-    const cleanup = () => { try{URL.revokeObjectURL(urlHtml);}catch(_){} try{iframe.remove();}catch(_){ } };
-
-    iframe.onload = () => {
-      // Tiempo para que cargue el embed y dispare la impresión
-      setTimeout(()=>{ cleanup(); resolve(); }, 2500);
-    };
-    iframe.onerror = () => { cleanup(); reject(new Error('embed load error')); };
-
-    document.body.appendChild(iframe);
-    iframe.src = urlHtml;
-  });
-
-  // === C) Último recurso: imprimir como HTML con IMG (no PDF)
-  const tryHtmlAsImage = () => new Promise((resolve) => {
-    // Renderiza una “plantilla” simple con medidas fijas y manda a print()
-    const page = window.open('', '_blank', 'width=400,height=900'); // no se verá en kiosk
-    const html = `
-      <html><head><meta charset="utf-8">
-      <title>Ticket</title>
-      <style>@page{size:45mm 250mm;margin:0} html,body{margin:0;padding:0}
-      .wrap{width:45mm;height:250mm;display:flex;align-items:center;justify-content:center}
-      img{max-width:90%;}</style></head>
-      <body onload="setTimeout(function(){try{print()}catch(e){} setTimeout(()=>close(),800)},300)">
-        <div class="wrap">
-          <img src="${doc.output('datauristring')}" alt="ticket">
-        </div>
-      </body></html>`;
-    page.document.open(); page.document.write(html); page.document.close();
-    setTimeout(resolve, 2500);
-  });
-
-  // === Ejecuta con fallback y limpieza final
-  (async () => {
-    try {
-      await tryIframePrint();
-    } catch (e1) {
-      console.warn('Print A failed, trying B', e1);
-      try {
-        await tryEmbedPrint();
-      } catch (e2) {
-        console.warn('Print B failed, trying C', e2);
-        await tryHtmlAsImage();
-      }
-    } finally {
-      try { URL.revokeObjectURL(pdfUrl); } catch(_) {}
-    }
-  })();
+  iframe.onload = () => {
+    setTimeout(() => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
+      finally { setTimeout(cleanup, 500); }
+    }, 150);
+  };
+  iframe.src = url;
 }
-</script>
 
 $('btnGenerar').onclick=()=>{
   if(!session.user) return show('viewLogin');
@@ -840,13 +735,12 @@ $('btnApplyFilter').onclick=applyFilter;
 $('filterPlate').addEventListener('input',()=>{ const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
 /* ===== Utilidades de Cierre X / Z ===== */
-function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); } // redefine por seguridad
 function buildDailyData(day){
   const map=store.get('tickets',{}), pays=store.get('payments',[]);
   const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  const rows=Object.values(map).filter(t=> ticketDateLocalDay(t.in)===day && t.status==='closed');
+  const rows=Object.values(map).filter(t=> new Date(t.in).toLocaleDateString('en-CA',{timeZone:TZ})===day && t.status==='closed');
   const total=rows.reduce((acc,t)=> acc + (pm.get(t.id)?.total||0), 0);
-  const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
+  const lost=store.get('lostTickets',[]).filter(x=> new Date(x.at).toLocaleDateString('en-CA',{timeZone:TZ})===day);
   return { rows, total, count:rows.length, lost, pm };
 }
 function buildDailyPDF(day, prefix){
@@ -865,7 +759,6 @@ function buildDailyPDF(day, prefix){
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
   doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Vehículos fuera: ${count}`,100,y);
 
-  // Perdidos
   y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
   doc.text('Patente',14,y); doc.text('Dueño',45,y); doc.text('Usuario',110,y); doc.text('Fecha',165,y); y+=4; doc.line(14,y,200,y); y+=6;
   lost.forEach(x=>{
@@ -899,7 +792,6 @@ function buildDailyXLSX(day, prefix){
   XLSX.writeFile(wb, `${prefix}_${day}.xlsx`);
 }
 
-/* Botón Cierre X (no bloquea) */
 $('btnCierreX').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`Cierre X (${day}): genera XLSX + PDF sin bloquear operaciones.\n¿Continuar?`)) return;
@@ -908,7 +800,6 @@ $('btnCierreX').onclick=()=>{
   alert('Cierre X generado (XLSX + PDF).');
 };
 
-/* Botón Cierre Z (bloquea día actual) */
 $('btnCierreZ').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`⚠️ Cierre Z (${day}): genera XLSX + PDF y BLOQUEA nuevas operaciones por el resto del día.\nNo podrás ingresar ni cobrar hasta el día siguiente.\n\n¿Confirmas Cierre Z?`)) return;
@@ -985,7 +876,7 @@ function doLoginFlow(){
 $('doLogin').onclick=doLoginFlow;
 ['loginUser','loginPass'].forEach(id=> $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doLoginFlow(); } }));
 
-/* ========= Auto Cierre Z a las 00:00 si faltó (para AYER) ========= */
+/* ========= Auto Cierre Z de AYER a las 00:00 si faltó ========= */
 function autoZIfNeeded(){
   const nowDay = todayLocal();
   const yDay = yesterLocal();
@@ -1006,9 +897,10 @@ setInterval(autoZIfNeeded, 30000);
 
 /* ========= Init ========= */
 (function init(){
-  clearSession(); updateHeader(); show('viewLogin'); defaultDates(); refreshZBanners();
+  clearSession(); updateHeader(); show('viewLogin'); 
+  const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; 
+  refreshZBanners();
 })();
-function defaultDates(){ const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; }
 </script>
 </body>
 </html>
