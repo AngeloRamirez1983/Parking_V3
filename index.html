@@ -578,6 +578,7 @@ function plateHasOpen(plate){
 }
 
 /* === NUEVA impresión: iframe oculto para no dejar PDF abierto === */
+<script>
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
   const W = 45, H = 250, M = 3;
@@ -598,10 +599,10 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y += 8;
 
-  // Hora de ingreso (wrap seguro)
+  // Hora de ingreso (wrap)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Ingreso:', M, y);
-  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
+  const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:'America/Santiago', hour12:false });
   const inLines = doc.splitTextToSize(inStr, inner * 0.75);
   inLines.forEach((line, i) => { doc.text(line, W - M, y + i*lh, {align:'right'}); });
   y += Math.max(lh, inLines.length * lh) + 3;
@@ -619,7 +620,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += lh-1; });
   y += 2;
 
-  // QR
+  // QR (35mm centrado)
   if (qrDataURL) {
     const QRW = 35, QRH = 35, x = (W - QRW) / 2;
     doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
@@ -630,29 +631,117 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   doc.setFontSize(7);
   doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'});
 
-  const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
+  // === Genera el PDF como Blob
+  const blob = doc.output('blob'); // application/pdf
+  const pdfUrl = URL.createObjectURL(blob);
 
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0'; iframe.style.bottom = '0';
-  iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
-  document.body.appendChild(iframe);
+  // === A) Intento principal: IFRAME oculto con PDF
+  const tryIframePrint = () => new Promise((resolve, reject) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0'; iframe.style.bottom = '0';
+    iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+    const cleanup = () => { try{iframe.remove();}catch(_){ } };
+    let done = false;
 
-  const cleanup = () => { try{URL.revokeObjectURL(url);}catch(_){} try{iframe.remove();}catch(_){} };
+    iframe.onload = () => {
+      // Pequeño delay para que Chrome termine de pintar el visor
+      setTimeout(() => {
+        try {
+          const w = iframe.contentWindow;
+          // Escucha onafterprint (algunos drivers lo disparan)
+          const onAfter = () => { if(!done){ done=true; cleanup(); resolve(); } };
+          w.addEventListener('afterprint', onAfter, { once:true });
+          // Timeout de seguridad: si no dispara afterprint, igual cerramos y resolvemos
+          setTimeout(() => { if(!done){ done=true; cleanup(); resolve(); } }, 2500);
+          w.focus();
+          w.print(); // con --kiosk-printing no aparece diálogo
+        } catch (e) {
+          cleanup();
+          reject(e);
+        }
+      }, 200);
+    };
 
-  iframe.onload = () => {
-    setTimeout(() => {
+    iframe.onerror = (e) => { cleanup(); reject(new Error('iframe load error')); };
+
+    document.body.appendChild(iframe);
+    iframe.src = pdfUrl;
+  });
+
+  // === B) Fallback: HTML temporal + <embed> del PDF
+  const tryEmbedPrint = () => new Promise((resolve, reject) => {
+    const html = `
+      <html><head><meta charset="utf-8"><title>Ticket</title>
+      <style>@page{size:45mm 250mm;margin:0} html,body{margin:0;padding:0}</style>
+      </head>
+      <body>
+        <embed src="${pdfUrl}" type="application/pdf" style="width:100%;height:100vh;">
+        <script>
+          setTimeout(function(){
+            try{
+              window.focus(); window.print();
+              setTimeout(()=>window.close && window.close(), 800);
+            }catch(e){}
+          }, 300);
+        <\/script>
+      </body></html>`;
+    const blobHtml = new Blob([html], {type:'text/html'});
+    const urlHtml = URL.createObjectURL(blobHtml);
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position='fixed'; iframe.style.right='0'; iframe.style.bottom='0';
+    iframe.style.width='0'; iframe.style.height='0'; iframe.style.border='0';
+
+    const cleanup = () => { try{URL.revokeObjectURL(urlHtml);}catch(_){} try{iframe.remove();}catch(_){ } };
+
+    iframe.onload = () => {
+      // Tiempo para que cargue el embed y dispare la impresión
+      setTimeout(()=>{ cleanup(); resolve(); }, 2500);
+    };
+    iframe.onerror = () => { cleanup(); reject(new Error('embed load error')); };
+
+    document.body.appendChild(iframe);
+    iframe.src = urlHtml;
+  });
+
+  // === C) Último recurso: imprimir como HTML con IMG (no PDF)
+  const tryHtmlAsImage = () => new Promise((resolve) => {
+    // Renderiza una “plantilla” simple con medidas fijas y manda a print()
+    const page = window.open('', '_blank', 'width=400,height=900'); // no se verá en kiosk
+    const html = `
+      <html><head><meta charset="utf-8">
+      <title>Ticket</title>
+      <style>@page{size:45mm 250mm;margin:0} html,body{margin:0;padding:0}
+      .wrap{width:45mm;height:250mm;display:flex;align-items:center;justify-content:center}
+      img{max-width:90%;}</style></head>
+      <body onload="setTimeout(function(){try{print()}catch(e){} setTimeout(()=>close(),800)},300)">
+        <div class="wrap">
+          <img src="${doc.output('datauristring')}" alt="ticket">
+        </div>
+      </body></html>`;
+    page.document.open(); page.document.write(html); page.document.close();
+    setTimeout(resolve, 2500);
+  });
+
+  // === Ejecuta con fallback y limpieza final
+  (async () => {
+    try {
+      await tryIframePrint();
+    } catch (e1) {
+      console.warn('Print A failed, trying B', e1);
       try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print(); // con --kiosk-printing NO hay diálogo
-      } finally {
-        setTimeout(cleanup, 500);
+        await tryEmbedPrint();
+      } catch (e2) {
+        console.warn('Print B failed, trying C', e2);
+        await tryHtmlAsImage();
       }
-    }, 150);
-  };
-  iframe.src = url;
+    } finally {
+      try { URL.revokeObjectURL(pdfUrl); } catch(_) {}
+    }
+  })();
 }
+</script>
 
 $('btnGenerar').onclick=()=>{
   if(!session.user) return show('viewLogin');
