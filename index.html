@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Parking – Espacio Quintalba - Rengo</title>
+<title>Parking – Estacionamiento Rengo</title>
 
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0ea5e9" />
@@ -93,7 +93,7 @@ body.alt input, body.alt select{border-radius:8px}
 <div class="container">
   <header>
     <div class="toolbar">
-      <h1>Parking – Espacio Quintalba - Rengo</h1>
+      <h1>Parking – Estacionamiento Rengo</h1>
       <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
     </div>
     <div class="toolbar">
@@ -326,10 +326,8 @@ body.alt input, body.alt select{border-radius:8px}
 <script>
 /* ========= Config (Demo) ========= */
 const TZ='America/Santiago';
-const AUTO_CHARGE=false;
-const DEFAULT_METHOD='efectivo';
 const INACTIVITY_MIN=60;
-const ALWAYS_LOGIN=true;
+const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
 
 /* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
@@ -339,7 +337,6 @@ const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); //
 function yesterLocal(){ const d=new Date(); const opt={timeZone:TZ}; const d2=new Date(d.toLocaleString('en-US',opt)); d2.setDate(d2.getDate()-1); return d2.toLocaleDateString('en-CA',opt); }
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
-const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
 function signId(id){ const sig=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return `${id}.${sig}`;}
 function verifySigned(signed){ const [id,sig]=(signed||'').split('.'); if(!id||!sig)return null; const exp=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return sig===exp? id:null; }
 
@@ -360,7 +357,6 @@ if(!store.get('zAutoLog')) store.set('zAutoLog', {});
 /* ========= Sesión ========= */
 const session = { user:null, role:null }; let inactivityTimer=null;
 function saveSession(){ store.set('session', {user:session.user, role:session.role, at:nowISO()}); }
-function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
 function clearSession(){ store.del('session'); session.user=null; session.role=null; stopIdleTimer(); }
 function startIdleTimer(){ stopIdleTimer(); inactivityTimer=setTimeout(()=>{ alert('Sesión cerrada por inactividad'); logout(); }, INACTIVITY_MIN*60*1000); }
 function stopIdleTimer(){ if(inactivityTimer){ clearTimeout(inactivityTimer); inactivityTimer=null; } }
@@ -574,7 +570,7 @@ function plateHasOpen(plate){
   const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
 }
 
-/* === Impresión: iframe oculto para no dejar PDF abierto === */
+/* === Impresión NORMAL: abre nueva pestaña con PDF y deja el diálogo de impresión === */
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
   const W = 45, H = 250, M = 3;
@@ -583,7 +579,7 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   let y = 8, cx = W/2, inner = W - M*2, lh = 5;
 
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.splitTextToSize('Parking Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
+  doc.splitTextToSize('Bienvenido a Estacionamiento Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
@@ -620,22 +616,10 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0'; iframe.style.bottom = '0';
-  iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const cleanup = () => { try{URL.revokeObjectURL(url);}catch(_){} try{iframe.remove();}catch(_){} };
-
-  iframe.onload = () => {
-    setTimeout(() => {
-      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
-      finally { setTimeout(cleanup, 500); }
-    }, 150);
-  };
-  iframe.src = url;
+  const w = window.open(url, '_blank'); // queda abierto; tú lo cierras
+  if (w) {
+    setTimeout(() => { try { w.focus(); w.print(); } catch(_) {} }, 450);
+  }
 }
 
 $('btnGenerar').onclick=()=>{
@@ -689,7 +673,6 @@ $('btnCobrarEfe').onclick=()=> doCharge('efectivo');
 $('btnCobrarTx').onclick =()=> doCharge('transbank');
 
 /* ========= Reportes + Filtros ========= */
-function defaultDates(){ const d=todayLocal(); $('filterFrom').value=d; $('filterTo').value=d; }
 function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); }
 function inRange(t){ const f=$('filterFrom').value||'0000-01-01', to=$('filterTo').value||'9999-12-31'; const day=ticketDateLocalDay(t.in); return (day>=f && day<=to); }
 function getFilteredTickets(){
@@ -864,7 +847,6 @@ $('btnReprintLost').onclick=()=>{
   const qrDataURL=buildQRDataURL(t.signed);
   printTicketPDF({ plate:t.plate, inISO:t.in, signed:t.signed, qrDataURL, welcome:'Reimpresión por ticket perdido' });
   alert('Reimpresión registrada.');
-  resetLostForm();
 };
 
 /* ========= Login Flow ========= */
