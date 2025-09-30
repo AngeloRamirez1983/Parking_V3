@@ -93,7 +93,7 @@ body.alt input, body.alt select{border-radius:8px}
 <div class="container">
   <header>
     <div class="toolbar">
-      <h1>Parking – Estacionamiento Rengo</h1>
+      <h1>Parking – Espacio Quintalba - Rengo</h1>
       <span id="occupancyTag" class="badge kpi-large">Disponibles: — / Capacidad: —</span>
     </div>
     <div class="toolbar">
@@ -207,6 +207,7 @@ body.alt input, body.alt select{border-radius:8px}
       </div>
     </div>
 
+    <!-- Totales visibles del rango filtrado -->
     <div class="summary" id="summaryBoxes">
       <div class="box"><h4>Total ventas (rango)</h4><div class="big" id="sumTotal">$0</div></div>
       <div class="box"><h4>Vehículos fuera</h4><div class="big" id="sumCount">0</div></div>
@@ -230,6 +231,7 @@ body.alt input, body.alt select{border-radius:8px}
   <section class="card hidden" id="viewAdmin">
     <div class="backbar"><button class="btn-ghost" id="backAdmin">← Atrás</button><h2>Administración</h2><span class="badge" id="freeOnAdmin">— / —</span></div>
 
+    <!-- Parámetros -->
     <div class="row">
       <div><label>Primer intervalo (min)</label><input id="tFirstMin" type="number" min="0" /></div>
       <div><label>Precio primer intervalo ($)</label><input id="tFirstPrice" type="number" min="0" /></div>
@@ -243,6 +245,7 @@ body.alt input, body.alt select{border-radius:8px}
 
     <hr/>
 
+    <!-- Gestión de usuarios -->
     <div class="users-head">
       <h3>Usuarios</h3>
       <span class="muted">Admin puede crear/editar/eliminar usuarios</span>
@@ -326,8 +329,10 @@ body.alt input, body.alt select{border-radius:8px}
 <script>
 /* ========= Config (Demo) ========= */
 const TZ='America/Santiago';
+const AUTO_CHARGE=false;
+const DEFAULT_METHOD='efectivo';
 const INACTIVITY_MIN=60;
-const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
+const ALWAYS_LOGIN=true;
 
 /* ========= Utils ========= */
 const $ = (id)=>document.getElementById(id);
@@ -337,6 +342,7 @@ const todayLocal = ()=> new Date().toLocaleDateString('en-CA',{timeZone:TZ}); //
 function yesterLocal(){ const d=new Date(); const opt={timeZone:TZ}; const d2=new Date(d.toLocaleString('en-US',opt)); d2.setDate(d2.getDate()-1); return d2.toLocaleDateString('en-CA',opt); }
 const money = (n)=> (Number(n||0)).toLocaleString('es-CL');
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+const SECRET='CAMBIA-ESTO-EN-PRODUCCION';
 function signId(id){ const sig=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return `${id}.${sig}`;}
 function verifySigned(signed){ const [id,sig]=(signed||'').split('.'); if(!id||!sig)return null; const exp=CryptoJS.HmacSHA256(id,SECRET).toString(CryptoJS.enc.Hex).slice(0,16); return sig===exp? id:null; }
 
@@ -351,12 +357,13 @@ if(!store.get('users')) store.set('users',[
 ]);
 if(!store.get('tariff')) store.set('tariff', { firstMinutes:20, firstPrice:500, perMin:20, dailyCap:10000 });
 if(store.get('capacity')==null) store.set('capacity', 50);
-if(!store.get('zClosedDate')) store.set('zClosedDate', '');
-if(!store.get('zAutoLog')) store.set('zAutoLog', {});
+if(!store.get('zClosedDate')) store.set('zClosedDate', '');         // bloqueo día actual (manual)
+if(!store.get('zAutoLog')) store.set('zAutoLog', {});               // { 'YYYY-MM-DD': true } días ya auto-Z
 
 /* ========= Sesión ========= */
 const session = { user:null, role:null }; let inactivityTimer=null;
 function saveSession(){ store.set('session', {user:session.user, role:session.role, at:nowISO()}); }
+function loadSession(){ const s=store.get('session',null); if(!s) return false; session.user=s.user; session.role=s.role; return !!session.user; }
 function clearSession(){ store.del('session'); session.user=null; session.role=null; stopIdleTimer(); }
 function startIdleTimer(){ stopIdleTimer(); inactivityTimer=setTimeout(()=>{ alert('Sesión cerrada por inactividad'); logout(); }, INACTIVITY_MIN*60*1000); }
 function stopIdleTimer(){ if(inactivityTimer){ clearTimeout(inactivityTimer); inactivityTimer=null; } }
@@ -569,8 +576,6 @@ function plateHasOpen(plate){
   plate = (plate||'').toUpperCase().trim();
   const map=store.get('tickets',{}); return Object.values(map).some(t=> t.plate.toUpperCase()===plate && t.status==='open');
 }
-
-/* === Impresión NORMAL: abre nueva pestaña con PDF y deja el diálogo de impresión === */
 function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   const { jsPDF } = window.jspdf;
   const W = 45, H = 250, M = 3;
@@ -578,16 +583,20 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
 
   let y = 8, cx = W/2, inner = W - M*2, lh = 5;
 
+  // Título
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
   doc.splitTextToSize('Parking Espacio Quintalba - Rengo', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
 
+  // Saludo
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.splitTextToSize((welcome || '¡Bienvenido!'), inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh; });
   y += 2;
 
+  // Patente
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.text(plate, cx, y, {align:'center'}); y += 8;
 
+  // Hora de ingreso (wrap seguro)
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Ingreso:', M, y);
   const inStr = new Date(inISO).toLocaleString('es-CL', { timeZone:TZ, hour12:false });
@@ -595,31 +604,35 @@ function printTicketPDF({plate,inISO,signed,qrDataURL,welcome}){
   inLines.forEach((line, i) => { doc.text(line, W - M, y + i*lh, {align:'right'}); });
   y += Math.max(lh, inLines.length * lh) + 3;
 
+  // Separador
   doc.setDrawColor(120); doc.line(M, y, W - M, y); y += 4;
 
+  // Mensaje recordatorio
   doc.setFontSize(8);
-  doc.splitTextToSize('Recuerde conservar su ticket', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
+  doc.splitTextToSize('Recuerde presentar su ticket para el cobro', inner).forEach(line => { doc.text(line, cx, y, {align:'center'}); y += lh-1; });
   y += 1;
 
+  // ID
   doc.setFontSize(8);
   doc.splitTextToSize(`ID: ${signed}`, inner).forEach(line => { doc.text(line, M, y); y += lh-1; });
   y += 2;
 
+  // QR
   if (qrDataURL) {
     const QRW = 35, QRH = 35, x = (W - QRW) / 2;
     doc.addImage(qrDataURL, 'JPEG', x, y, QRW, QRH);
     y += QRH + 6;
   }
 
+  // Pie
   doc.setFontSize(7);
-  doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'});
+  doc.text('Desarrollado por ARSM Servicios', cx, y, {align:'center'}); y += 4;
 
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  const w = window.open(url, '_blank'); // queda abierto; tú lo cierras
-  if (w) {
-    setTimeout(() => { try { w.focus(); w.print(); } catch(_) {} }, 450);
-  }
+  const w = window.open(url);
+  if (w) { w.onload = () => { try { w.focus(); w.print(); } catch(_) {} }; }
+  else { doc.save(`ticket_${plate}.pdf`); }
 }
 
 $('btnGenerar').onclick=()=>{
@@ -673,6 +686,7 @@ $('btnCobrarEfe').onclick=()=> doCharge('efectivo');
 $('btnCobrarTx').onclick =()=> doCharge('transbank');
 
 /* ========= Reportes + Filtros ========= */
+function defaultDates(){ const d=todayLocal(); $('filterFrom').value=d; $('filterTo').value=d; }
 function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); }
 function inRange(t){ const f=$('filterFrom').value||'0000-01-01', to=$('filterTo').value||'9999-12-31'; const day=ticketDateLocalDay(t.in); return (day>=f && day<=to); }
 function getFilteredTickets(){
@@ -718,12 +732,13 @@ $('btnApplyFilter').onclick=applyFilter;
 $('filterPlate').addEventListener('input',()=>{ const el=$('filterPlate'); const pos=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(pos,pos); });
 
 /* ===== Utilidades de Cierre X / Z ===== */
+function ticketDateLocalDay(iso){ return new Date(iso).toLocaleDateString('en-CA',{timeZone:TZ}); } // redefine por seguridad
 function buildDailyData(day){
   const map=store.get('tickets',{}), pays=store.get('payments',[]);
   const pm=new Map(pays.map(p=>[p.ticketId,p]));
-  const rows=Object.values(map).filter(t=> new Date(t.in).toLocaleDateString('en-CA',{timeZone:TZ})===day && t.status==='closed');
+  const rows=Object.values(map).filter(t=> ticketDateLocalDay(t.in)===day && t.status==='closed');
   const total=rows.reduce((acc,t)=> acc + (pm.get(t.id)?.total||0), 0);
-  const lost=store.get('lostTickets',[]).filter(x=> new Date(x.at).toLocaleDateString('en-CA',{timeZone:TZ})===day);
+  const lost=store.get('lostTickets',[]).filter(x=> ticketDateLocalDay(x.at)===day);
   return { rows, total, count:rows.length, lost, pm };
 }
 function buildDailyPDF(day, prefix){
@@ -742,6 +757,7 @@ function buildDailyPDF(day, prefix){
   y+=6; doc.line(14,y,200,y); y+=8; doc.setFontSize(12);
   doc.text(`Total ventas: $ ${money(total)}`,14,y); doc.text(`Vehículos fuera: ${count}`,100,y);
 
+  // Perdidos
   y+=12; doc.setFontSize(11); doc.text('Tickets perdidos reimpresos',14,y); y+=6; doc.setFontSize(9);
   doc.text('Patente',14,y); doc.text('Dueño',45,y); doc.text('Usuario',110,y); doc.text('Fecha',165,y); y+=4; doc.line(14,y,200,y); y+=6;
   lost.forEach(x=>{
@@ -775,6 +791,7 @@ function buildDailyXLSX(day, prefix){
   XLSX.writeFile(wb, `${prefix}_${day}.xlsx`);
 }
 
+/* Botón Cierre X (no bloquea) */
 $('btnCierreX').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`Cierre X (${day}): genera XLSX + PDF sin bloquear operaciones.\n¿Continuar?`)) return;
@@ -783,6 +800,7 @@ $('btnCierreX').onclick=()=>{
   alert('Cierre X generado (XLSX + PDF).');
 };
 
+/* Botón Cierre Z (bloquea día actual) */
 $('btnCierreZ').onclick=()=>{
   const day=todayLocal();
   if(!confirm(`⚠️ Cierre Z (${day}): genera XLSX + PDF y BLOQUEA nuevas operaciones por el resto del día.\nNo podrás ingresar ni cobrar hasta el día siguiente.\n\n¿Confirmas Cierre Z?`)) return;
@@ -847,6 +865,7 @@ $('btnReprintLost').onclick=()=>{
   const qrDataURL=buildQRDataURL(t.signed);
   printTicketPDF({ plate:t.plate, inISO:t.in, signed:t.signed, qrDataURL, welcome:'Reimpresión por ticket perdido' });
   alert('Reimpresión registrada.');
+  resetLostForm();
 };
 
 /* ========= Login Flow ========= */
@@ -858,31 +877,42 @@ function doLoginFlow(){
 $('doLogin').onclick=doLoginFlow;
 ['loginUser','loginPass'].forEach(id=> $(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doLoginFlow(); } }));
 
-/* ========= Auto Cierre Z de AYER a las 00:00 si faltó ========= */
+/* ========= Auto Cierre Z a las 00:00 si faltó (para AYER) ========= */
 function autoZIfNeeded(){
+  // ejecuta cada minuto; si cambia el día local y AYER no tuvo Z manual ni auto, genera auto Z (ayer)
   const nowDay = todayLocal();
   const yDay = yesterLocal();
   const log = store.get('zAutoLog', {});
+  // si ya se registró auto Z de ayer, no repetir
   if (log[yDay]) return;
+
+  // condición de medianoche: cuando el día actual es distinto al último check
+  // simplificado: si la hora local está dentro del primer minuto del día, intentamos auto-Z
   const now = new Date().toLocaleTimeString('en-GB',{timeZone:TZ,hour12:false});
+  // "00:00" a "00:01"
   if (now.startsWith('00:00') || now.startsWith('00:01')) {
+    // si ayer NO tuvo cierre Z manual (zClosedDate != ayer), generamos ambos archivos para AYER
     if (store.get('zClosedDate','') !== yDay) {
       try{
         buildDailyXLSX(yDay,'cierre_z_auto');
         buildDailyPDF(yDay,'cierre_z_auto');
       }catch(e){ console.error('Auto Z fail',e); }
     }
+    // marcar auto-Z de ayer (sea que hubiera o no manual, para no repetirse)
     log[yDay] = true; store.set('zAutoLog', log);
   }
 }
+// chequeo cada 30s para mayor robustez
 setInterval(autoZIfNeeded, 30000);
 
 /* ========= Init ========= */
 (function init(){
-  clearSession(); updateHeader(); show('viewLogin'); 
-  const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; 
-  refreshZBanners();
+  // Login siempre
+  clearSession(); updateHeader(); show('viewLogin'); defaultDates(); refreshZBanners();
+
+  // Diseño alt preferencia cargada arriba
 })();
+function defaultDates(){ const d=todayLocal(); const fFrom=document.getElementById('filterFrom'); const fTo=document.getElementById('filterTo'); if(fFrom) fFrom.value=d; if(fTo) fTo.value=d; }
 </script>
 </body>
 </html>
